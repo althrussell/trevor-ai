@@ -1,0 +1,56 @@
+# Cloned reference repos used during porting (read-only inspection)
+.sources/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+dist/
+*.egg-info/
+.eggs/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+
+# Pytest / coverage
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.mypy_cache/
+.ruff_cache/
+
+# Editors
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+
+# Local Hermes cache for dev
+.hermes_cache/
+hermes_home_local/
+
+# Databricks
+.databricks/
+
+# Secrets / env files
+.env
+.env.local
+*.secret
+
+# Logs
+*.log
+logs/
+
+# Vendored Hermes (we install from PyPI by default; only vendor if needed)
+vendor/hermes-agent/
