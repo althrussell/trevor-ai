@@ -228,8 +228,15 @@ class HermesSupervisor:
         )
 
     async def _start_periodic_tasks(self) -> None:
-        # Heartbeat (lightweight self-check + UC Volume sync)
+        # Heartbeat (lightweight self-check + UC Volume sync + token refresh)
         async def _heartbeat() -> None:
+            # Refresh the Databricks bearer token at half the heartbeat
+            # interval (capped at 30 minutes) so long-running App
+            # containers never hand Hermes a stale token. Databricks
+            # tokens are typically valid for ~1h, so 30m is a safe
+            # default.
+            token_refresh_interval = min(1800, max(60, self.cfg.heartbeat_seconds * 5))
+            last_token_refresh = 0.0
             while True:
                 await asyncio.sleep(self.cfg.heartbeat_seconds)
                 if self.runtime is not None and getattr(self.runtime, "home_fs", None) is not None:
@@ -237,6 +244,25 @@ class HermesSupervisor:
                         await asyncio.to_thread(self.runtime.home_fs.sync_to_volume)
                     except Exception:
                         log.exception("UC Volume heartbeat sync failed")
+                # Refresh Databricks bearer token if due.
+                try:
+                    import time as _t
+                    now = _t.time()
+                    if now - last_token_refresh >= token_refresh_interval:
+                        if (
+                            self.runtime is not None
+                            and getattr(self.runtime, "provider", None) is not None
+                            and getattr(self.runtime, "agent", None) is not None
+                        ):
+                            refreshed = await asyncio.to_thread(
+                                self.runtime.provider.refresh_agent_token,
+                                self.runtime.agent,
+                            )
+                            if refreshed:
+                                last_token_refresh = now
+                                log.debug("Databricks bearer token refreshed via heartbeat")
+                except Exception:
+                    log.exception("Bearer-token refresh failed")
                 if self.runtime is not None and getattr(self.runtime, "session_db", None) is not None:
                     try:
                         await asyncio.to_thread(self.runtime.session_db.append_event,  # type: ignore[attr-defined]

@@ -29,7 +29,7 @@ env:
 
   # Lakebase
   - name: HERMES_DATABRICKS_LAKEBASE_INSTANCE
-    value: "hermes-db"
+    value: "trevor-db"
   - name: HERMES_DATABRICKS_LAKEBASE_SCHEMA
     value: "hermes_session"
 
@@ -57,7 +57,7 @@ env:
 
   # SQL Warehouse for databricks_uc_query_readonly (optional)
   - name: HERMES_DATABRICKS_WAREHOUSE_ID
-    value: ""
+    value: "9a444167489c1f75"
 
   # Hermes home (the local cache; durable mirror lives in UC Volume)
   - name: HERMES_HOME

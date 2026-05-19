@@ -114,22 +114,23 @@ class HermesRuntime:
         """
         # Late imports so Phase 1 deployments without hermes-agent
         # installed still boot a degraded App.
+        #
+        # IMPORTANT: ``HERMES_HOME`` MUST be set in the environment
+        # before importing any ``hermes_*`` module, because
+        # ``hermes_constants.get_hermes_home()`` is called eagerly at
+        # import time from several submodules.
+        os.environ["HERMES_HOME"] = str(self.cfg.hermes_home)
         try:
-            from hermes_constants import (  # type: ignore
-                set_hermes_home_override,
-            )
+            self.cfg.hermes_home.mkdir(parents=True, exist_ok=True)
+        except Exception:
+            log.debug("hermes_home mkdir failed", exc_info=True)
+
+        try:
             from hermes_cli.config import ensure_hermes_home  # type: ignore
             from hermes_logging import setup_logging as hermes_setup_logging  # type: ignore
             from run_agent import AIAgent  # type: ignore
         except Exception as exc:
             raise RuntimeError(f"hermes-agent not importable: {exc}") from exc
-
-        # 1. Pin Hermes' home to our cache (UC Volume mirror).
-        try:
-            set_hermes_home_override(str(self.cfg.hermes_home))
-        except Exception:
-            log.debug("set_hermes_home_override raised", exc_info=True)
-        os.environ["HERMES_HOME"] = str(self.cfg.hermes_home)
 
         # 2. Make sure the home directory tree exists.
         try:
@@ -277,11 +278,31 @@ class HermesRuntime:
         )
 
         if isinstance(result, dict):
-            text = result.get("response") or result.get("text") or result.get("content") or ""
+            # Hermes' canonical key is ``final_response``. Older code
+            # paths and our direct fallback use ``response``/``text``.
+            text = (
+                result.get("final_response")
+                or result.get("response")
+                or result.get("text")
+                or result.get("content")
+                or ""
+            )
             usage = result.get("usage") or {}
+            extra = {
+                "api_calls": result.get("api_calls"),
+                "completed": result.get("completed"),
+                "partial": result.get("partial"),
+                "error": result.get("error"),
+                "messages_count": (
+                    len(result["messages"])
+                    if isinstance(result.get("messages"), list)
+                    else None
+                ),
+            }
         else:
             text = str(result)
             usage = {}
+            extra = {}
 
         return {
             "session_id": session_id,
@@ -289,6 +310,7 @@ class HermesRuntime:
             "usage": usage,
             "mode": "hermes",
             "metadata": metadata or {},
+            "hermes": extra,
         }
 
     def _persist_direct_turn(

@@ -1,7 +1,16 @@
-resources:
-  database_instances:
-    hermes_db:
-      name: ${var.lakebase_instance}
-      capacity: CU_1
-      # databricks_postgres is the default DB; we use the dedicated
-      # 'hermes_session' schema (created by the setup_lakebase job).
+# Lakebase is intentionally NOT bundle-managed for the free target.
+#
+# On Databricks Free Edition the workspace is typically capped at a
+# single Lakebase instance, and an instance already exists
+# (`trevor-db`). The bundle binds to it externally via the
+# ``HERMES_DATABRICKS_LAKEBASE_INSTANCE`` env var declared in
+# ``app/app.yaml``; the App SP needs DATABASE_USAGE on the instance.
+#
+# To let the bundle own the Lakebase instance again, uncomment the
+# block below and set ``--var lakebase_instance=<new-name>``.
+
+# resources:
+#   database_instances:
+#     hermes_db:
+#       name: ${var.lakebase_instance}
+#       capacity: CU_1

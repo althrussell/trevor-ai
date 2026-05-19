@@ -159,39 +159,67 @@ class LakebaseSessionDB:
     def ensure_schema(self) -> None:
         """Apply ``schema.sql`` once per process.
 
-        Idempotent. We tolerate ``permission denied`` on ``CREATE
-        EXTENSION`` and ``CREATE SCHEMA`` so that the App service
-        principal (which typically lacks superuser privileges) can
-        still bring the session DB online when the setup_lakebase job
-        has already created the schema + extension as the workspace
-        user.
+        Idempotent and defensive. On Databricks Free Edition the App
+        service principal typically does NOT have CREATE on the
+        ``hermes_session`` schema — the ``setup_lakebase`` bundle job
+        owns the DDL and grants the SP only USAGE + DML privileges.
+        We therefore swallow ``permission denied`` on every CREATE
+        statement here and verify connectivity by SELECTing 1.
         """
         if self._schema_applied:
             return
         sql_text = SCHEMA_FILE.read_text()
         sql_text = sql_text.replace("hermes_session", self.schema)
-        statements = [s.strip() for s in sql_text.split(";") if s.strip() and not s.strip().startswith("--")]
+        statements = [
+            s.strip()
+            for s in sql_text.split(";")
+            if s.strip() and not s.strip().startswith("--")
+        ]
 
+        skipped = 0
+        applied = 0
         with self.lakebase.cursor() as cur:
             for stmt in statements:
                 try:
                     cur.execute(stmt)
+                    applied += 1
                 except Exception as exc:
+                    msg = str(exc).lower()
                     upper = stmt.upper()
-                    # Tolerate priv-required DDL the setup_lakebase job owns.
-                    if (
+                    is_create = (
                         upper.startswith("CREATE EXTENSION")
                         or upper.startswith("CREATE SCHEMA")
-                    ):
+                        or upper.startswith("CREATE TABLE")
+                        or upper.startswith("CREATE INDEX")
+                        or upper.startswith("CREATE SEQUENCE")
+                    )
+                    tolerable = (
+                        "permission denied" in msg
+                        or "must be owner" in msg
+                        or "already exists" in msg
+                        or "does not exist" in msg  # gin_trgm_ops missing
+                    )
+                    if is_create and tolerable:
+                        skipped += 1
                         log.warning(
-                            "Skipping privileged DDL (assumed run by setup_lakebase job): %s — %s",
-                            stmt.split("\n", 1)[0], exc,
+                            "Skipping DDL (assumed run by setup_lakebase job): %s — %s",
+                            stmt.split("\n", 1)[0],
+                            exc,
                         )
                         continue
                     raise
+
+            # Sanity probe — must succeed or we have a real wiring problem.
+            cur.execute(f'SET search_path TO "{self.schema}"')
+            cur.execute("SELECT 1")
+            cur.fetchone()
+
         self._schema_applied = True
         self._search_path_set = True
-        log.info("Lakebase schema '%s' ensured", self.schema)
+        log.info(
+            "Lakebase schema '%s' ensured (applied=%d, skipped=%d)",
+            self.schema, applied, skipped,
+        )
 
     def _ensure_search_path(self, cur) -> None:
         if not self._search_path_set:

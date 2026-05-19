@@ -68,6 +68,18 @@ DDL_PRELUDE = [
     f'SET search_path TO "{schema_name}"',
 ]
 
+OPTIONAL_DDL_MARKERS = (
+    # Statements that depend on optional extensions. They will be
+    # silently skipped on Lakebase Free Edition (no pg_trgm
+    # superuser), but kept for parity on full Lakebase deployments.
+    "CREATE EXTENSION",
+    "gin_trgm_ops",
+)
+
+
+def _is_optional(stmt: str) -> bool:
+    return any(marker in stmt for marker in OPTIONAL_DDL_MARKERS)
+
 DDL_TABLES = [
     """
     CREATE TABLE IF NOT EXISTS sessions (
@@ -229,10 +241,22 @@ DDL_TABLES = [
     """,
 ]
 
-with conn.cursor() as cur:
-    for stmt in DDL_PRELUDE + DDL_TABLES:
-        cur.execute(stmt)
-print("DDL applied successfully")
+applied = 0
+skipped = 0
+for stmt in DDL_PRELUDE + DDL_TABLES:
+    label = stmt.strip().splitlines()[0][:80]
+    try:
+        with conn.cursor() as cur:
+            cur.execute(stmt)
+        applied += 1
+    except Exception as exc:
+        if _is_optional(stmt):
+            skipped += 1
+            print(f"SKIP optional DDL ({label}): {exc}")
+        else:
+            print(f"FAIL DDL ({label}): {exc}")
+            raise
+print(f"DDL applied: {applied}, skipped: {skipped}")
 
 # COMMAND ----------
 
@@ -242,27 +266,44 @@ print("DDL applied successfully")
 # COMMAND ----------
 
 if app_sp_client_id:
-    with conn.cursor() as cur:
-        try:
-            cur.execute(
-                "SELECT databricks_create_role(%s, 'SERVICE_PRINCIPAL')",
-                (app_sp_client_id,),
-            )
-            print(f"Created/ensured Postgres role for SP {app_sp_client_id}")
-        except Exception as exc:
-            print(f"databricks_create_role: {exc} (continuing — role may already exist)")
+    # Ensure the Postgres role for the App SP exists. On Lakebase
+    # Free Edition the SQL extension `databricks_create_role()` is
+    # not installed, so we use the Databricks REST API to create the
+    # role first (idempotent — 409 means it already exists). Run
+    # this from the bundle deploy or once manually; we just no-op if
+    # the role is already present.
+    try:
+        w.database.create_database_instance_role(
+            instance_name=instance_name,
+            database_instance_role={
+                "name": app_sp_client_id,
+                "identity_type": "SERVICE_PRINCIPAL",
+            },
+        )
+        print(f"Created Postgres role for SP {app_sp_client_id} (via REST API)")
+    except Exception as exc:
+        msg = str(exc).lower()
+        if "already" in msg or "exists" in msg or "409" in msg:
+            print(f"Postgres role for SP {app_sp_client_id} already exists (ok)")
+        else:
+            print(f"create_database_instance_role: {exc} (continuing)")
 
+    with conn.cursor() as cur:
         grant_stmts = [
             f'GRANT CONNECT ON DATABASE databricks_postgres TO "{app_sp_client_id}"',
-            f'GRANT USAGE ON SCHEMA "{schema_name}" TO "{app_sp_client_id}"',
+            f'GRANT USAGE, CREATE ON SCHEMA "{schema_name}" TO "{app_sp_client_id}"',
             f'GRANT ALL ON ALL TABLES IN SCHEMA "{schema_name}" TO "{app_sp_client_id}"',
             f'GRANT ALL ON ALL SEQUENCES IN SCHEMA "{schema_name}" TO "{app_sp_client_id}"',
             f'ALTER DEFAULT PRIVILEGES IN SCHEMA "{schema_name}" GRANT ALL ON TABLES TO "{app_sp_client_id}"',
             f'ALTER DEFAULT PRIVILEGES IN SCHEMA "{schema_name}" GRANT ALL ON SEQUENCES TO "{app_sp_client_id}"',
         ]
         for stmt in grant_stmts:
-            cur.execute(stmt)
-            print(f"OK: {stmt}")
+            try:
+                cur.execute(stmt)
+                print(f"OK: {stmt}")
+            except Exception as exc:
+                print(f"GRANT failed ({stmt}): {exc}")
+                raise
 else:
     print("No app_sp_client_id provided — skipping GRANT step.")
 

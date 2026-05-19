@@ -22,6 +22,15 @@ resources:
             name: ${var.llm_endpoint}
             permission: CAN_QUERY
 
+        # Telegram secret bindings. The ``hermes_agent`` scope must
+        # exist with these three keys BEFORE deploy:
+        #   databricks secrets create-scope hermes_agent
+        #   databricks secrets put-secret hermes_agent telegram_bot_token              --string-value '<botfather token>'
+        #   databricks secrets put-secret hermes_agent telegram_primary_user_handle    --string-value '<your_handle>'
+        #   databricks secrets put-secret hermes_agent telegram_allowed_users          --string-value 'handle_a,handle_b'
+        # If the scope is missing the bundle deploy will fail with an
+        # unresolvable secret-resource error.
+
         - name: telegram-bot-token
           secret:
             scope: ${var.secrets_scope}
