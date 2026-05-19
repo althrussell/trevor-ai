@@ -1,0 +1,107 @@
+# Hermes-on-Databricks Asset Bundle
+#
+# Deploys the full Hermes Agent runtime (hermes-agent==0.14.0) as a
+# Databricks App backed by Lakebase Postgres for session state and
+# UC Volumes for Hermes home/skills/cron/artifacts.
+#
+# Usage:
+#   databricks auth login --host <workspace-url> --profile hermes-free
+#   databricks bundle validate -t free
+#   databricks bundle deploy   -t free
+#   databricks bundle run setup_lakebase -t free
+#   databricks bundle run hermes_app     -t free
+
+bundle:
+  name: hermes-on-databricks
+
+include:
+  - resources/*.yml
+
+variables:
+  catalog:
+    description: Unity Catalog name that owns the schema/volumes.
+    default: workspace
+
+  schema:
+    description: UC schema name for Hermes-owned objects.
+    default: hermes_agent
+
+  app_name:
+    description: Databricks App name (slug).
+    default: hermes-agent
+
+  agent_name:
+    description: Display name for the Hermes agent.
+    default: Hermes
+
+  llm_endpoint:
+    description: Databricks Model Serving endpoint name to use as the default model.
+    default: databricks-qwen3-next-80b-a3b-instruct
+
+  secrets_scope:
+    description: Databricks Secrets scope holding Telegram token + optional provider keys.
+    default: hermes_agent
+
+  lakebase_instance:
+    description: Lakebase database instance name.
+    default: hermes-db
+
+  hermes_home_volume:
+    description: UC Volume name backing HERMES_HOME (config, skills, cron, memories, logs).
+    default: hermes_home
+
+  artifacts_volume:
+    description: UC Volume name for agent-generated artifacts and notes.
+    default: hermes_artifacts
+
+  warehouse_id:
+    description: Optional SQL Warehouse ID used by the databricks_uc_query_readonly tool. Leave empty to disable.
+    default: ""
+
+  daily_token_cap:
+    description: Soft daily token cap (informational; enforced by runtime).
+    default: 200000
+
+  heartbeat_seconds:
+    description: Seconds between agent heartbeats (idle reflection + UC sync).
+    default: 180
+
+  terminal_backend:
+    description: One of in_app_subprocess|databricks_job|external_sandbox|disabled.
+    default: in_app_subprocess
+
+  browser_backend:
+    description: One of disabled|in_app_playwright|databricks_job_browser|external_browser.
+    default: disabled
+
+  mcp_enabled:
+    description: Whether to enable MCP tools. Requires HERMES_DATABRICKS_MCP_ENABLED=true at runtime too.
+    default: "false"
+
+  telegram_enabled:
+    description: Whether to start the Telegram long-polling loop at boot.
+    default: "true"
+
+targets:
+  free:
+    default: true
+    workspace:
+      # No host pinned; uses the active Databricks CLI profile.
+      profile: hermes-free
+    variables:
+      heartbeat_seconds: 180
+      daily_token_cap: 100000
+
+  dev:
+    workspace:
+      profile: hermes-dev
+    variables:
+      heartbeat_seconds: 60
+
+  prod:
+    mode: production
+    workspace:
+      profile: hermes-prod
+    variables:
+      heartbeat_seconds: 300
+      daily_token_cap: 1000000

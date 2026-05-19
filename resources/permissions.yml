@@ -1,0 +1,12 @@
+# No top-level workspace permissions are granted by this bundle.
+#
+# All app-level permissions are scoped through resource bindings on
+# resources.apps.hermes_app.resources (see app.yml):
+#   - WRITE_VOLUME on the two hermes volumes
+#   - CAN_QUERY on the configured serving endpoint
+#   - READ on the bound Databricks Secrets
+#
+# Lakebase grants are issued by the setup_lakebase job to the App SP
+# (see sql/setup_lakebase.py) and target only the hermes_session schema.
+
+resources: {}

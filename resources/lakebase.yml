@@ -1,0 +1,7 @@
+resources:
+  database_instances:
+    hermes_db:
+      name: ${var.lakebase_instance}
+      capacity: CU_1
+      # databricks_postgres is the default DB; we use the dedicated
+      # 'hermes_session' schema (created by the setup_lakebase job).

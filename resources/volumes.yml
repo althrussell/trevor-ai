@@ -1,0 +1,15 @@
+resources:
+  volumes:
+    hermes_home_volume:
+      catalog_name: ${var.catalog}
+      schema_name: ${resources.schemas.hermes_schema.name}
+      name: ${var.hermes_home_volume}
+      volume_type: MANAGED
+      comment: "Durable HERMES_HOME: config.yaml, skills/, cron/, memories/, logs/curator, image_cache/, audio_cache/, mcp-tokens/."
+
+    hermes_artifacts_volume:
+      catalog_name: ${var.catalog}
+      schema_name: ${resources.schemas.hermes_schema.name}
+      name: ${var.artifacts_volume}
+      volume_type: MANAGED
+      comment: "Agent-generated artifacts and operator notes."

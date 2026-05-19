@@ -1,0 +1,6 @@
+resources:
+  schemas:
+    hermes_schema:
+      catalog_name: ${var.catalog}
+      name: ${var.schema}
+      comment: "Hermes Agent (${var.agent_name}) — UC volumes, Lakebase shadow, and agent artifacts."

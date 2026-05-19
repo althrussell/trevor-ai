@@ -1,0 +1,68 @@
+command:
+  - "uvicorn"
+  - "app:app"
+  - "--host"
+  - "0.0.0.0"
+  - "--port"
+  - "8000"
+  - "--loop"
+  - "asyncio"
+
+env:
+  # Identification
+  - name: HERMES_DATABRICKS_AGENT_NAME
+    value: "Hermes"
+
+  # Model serving
+  - name: HERMES_DATABRICKS_LLM_ENDPOINT
+    value: "databricks-qwen3-next-80b-a3b-instruct"
+
+  # Unity Catalog
+  - name: HERMES_DATABRICKS_CATALOG
+    value: "workspace"
+  - name: HERMES_DATABRICKS_SCHEMA
+    value: "hermes_agent"
+  - name: HERMES_DATABRICKS_HERMES_HOME_VOLUME
+    value: "hermes_home"
+  - name: HERMES_DATABRICKS_ARTIFACTS_VOLUME
+    value: "hermes_artifacts"
+
+  # Lakebase
+  - name: HERMES_DATABRICKS_LAKEBASE_INSTANCE
+    value: "hermes-db"
+  - name: HERMES_DATABRICKS_LAKEBASE_SCHEMA
+    value: "hermes_session"
+
+  # Secrets scope
+  - name: HERMES_DATABRICKS_SECRETS_SCOPE
+    value: "hermes_agent"
+
+  # Behavior
+  - name: HERMES_DATABRICKS_DAILY_TOKEN_CAP
+    value: "100000"
+  - name: HERMES_DATABRICKS_HEARTBEAT_SECONDS
+    value: "180"
+
+  # Channels
+  - name: HERMES_DATABRICKS_TELEGRAM_ENABLED
+    value: "true"
+
+  # Tool backends
+  - name: HERMES_DATABRICKS_TERMINAL_BACKEND
+    value: "in_app_subprocess"
+  - name: HERMES_DATABRICKS_BROWSER_BACKEND
+    value: "disabled"
+  - name: HERMES_DATABRICKS_MCP_ENABLED
+    value: "false"
+
+  # SQL Warehouse for databricks_uc_query_readonly (optional)
+  - name: HERMES_DATABRICKS_WAREHOUSE_ID
+    value: ""
+
+  # Hermes home (the local cache; durable mirror lives in UC Volume)
+  - name: HERMES_HOME
+    value: "/tmp/hermes_cache/hermes_home"
+
+  # Quiet Hermes' setup-wizard prompts
+  - name: HERMES_NONINTERACTIVE
+    value: "1"

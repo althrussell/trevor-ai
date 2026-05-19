@@ -1,0 +1,38 @@
+# Hermes-on-Databricks runtime dependencies.
+#
+# Phase 1 baseline: the FastAPI app boots without Hermes. Phase 2
+# adds `hermes-agent` from PyPI (or a vendored install) and from then
+# on Hermes' own pinned dependency tree applies on top of these.
+
+# Web framework
+fastapi==0.115.5
+uvicorn[standard]==0.32.1
+
+# HTTP
+httpx==0.28.1
+
+# Databricks
+databricks-sdk==0.105.0
+
+# Postgres / Lakebase
+psycopg[binary]==3.2.3
+
+# OpenAI client (also pulled in by hermes-agent)
+openai==1.55.3
+
+# Validation
+pydantic==2.10.3
+
+# Date utilities
+python-dateutil==2.9.0
+
+# YAML for Hermes config interop
+PyYAML==6.0.2
+
+# Hermes itself. We pin a specific release; the Databricks App build
+# will run `pip install -r requirements.txt` deterministically.
+#
+# If PyPI is unavailable in your build environment, comment this out
+# and rely on the vendored copy under vendor/hermes-agent (set
+# PYTHONPATH=app:vendor/hermes-agent in app.yaml).
+hermes-agent==0.14.0

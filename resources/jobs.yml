@@ -1,0 +1,6 @@
+# Additional Databricks Jobs used by the runtime as backends for
+# heavy/durable workloads (terminal sandboxes, browser sessions, cron).
+#
+# Placeholder for now — added incrementally as backends require them.
+
+resources: {}
