@@ -1,0 +1,17 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Quickstart
+    url: https://github.com/althrussell/trevor-ai/blob/main/QUICKSTART.md
+    about: 10-minute deploy guide. Most "how do I..." questions are answered here.
+  - name: Architecture & runtime constraints
+    url: https://github.com/althrussell/trevor-ai/tree/main/docs
+    about: How the pieces fit together, what's supported on Free Edition, and what's not.
+  - name: Security report
+    url: https://github.com/althrussell/trevor-ai/blob/main/SECURITY.md
+    about: Found a security issue? Please follow SECURITY.md, not the public tracker.
+  - name: Upstream Hermes bugs
+    url: https://github.com/nousresearch/hermes-agent/issues
+    about: If the issue is in `hermes-agent` core (provider loop, tool registry, scheduler), please file it upstream first.
+  - name: Databricks platform bugs
+    url: https://help.databricks.com/
+    about: Apps proxy / Lakebase / UC / Model Serving issues belong with Databricks support.

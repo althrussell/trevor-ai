@@ -1,0 +1,34 @@
+# Code owners — used by GitHub for automatic review requests.
+# See https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners
+#
+# Lines are matched in order, last match wins. Default to the maintainer.
+
+*                                       @althrussell
+
+# Bundle / deployment shape — review every change.
+/databricks.yml                         @althrussell
+/resources/                             @althrussell
+/app/app.yaml                           @althrussell
+
+# Hermes <-> Databricks compatibility layers.
+/app/hermes_databricks/                 @althrussell
+/app/hermes_databricks/databricks_provider.py  @althrussell
+/app/hermes_databricks/state/           @althrussell
+/app/hermes_databricks/fs/              @althrussell
+/app/hermes_databricks/tools/           @althrussell
+
+# Lakebase setup notebook — Free Edition SP-role workaround lives here.
+/sql/                                   @althrussell
+
+# CI, supply-chain, repo hygiene.
+/.github/                               @althrussell
+/pyproject.toml                         @althrussell
+/app/requirements.txt                   @althrussell
+
+# Docs — lower bar but still flagged so they don't drift.
+/README.md                              @althrussell
+/QUICKSTART.md                          @althrussell
+/CONTRIBUTING.md                        @althrussell
+/SECURITY.md                            @althrussell
+/CHANGELOG.md                           @althrussell
+/docs/                                  @althrussell

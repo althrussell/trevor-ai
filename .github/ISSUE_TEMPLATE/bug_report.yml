@@ -1,0 +1,116 @@
+name: Bug report
+description: Report something that's broken in Hermes on Databricks.
+title: "[bug] <short summary>"
+labels: ["bug", "triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to file a bug. A few things up front:
+
+        * Please redact bearer tokens, PATs, and Telegram bot tokens
+          before pasting logs.
+        * If this is a security issue (exploitable against a deployed
+          instance), close this and follow
+          [SECURITY.md](https://github.com/althrussell/trevor-ai/blob/main/SECURITY.md).
+  - type: input
+    id: version
+    attributes:
+      label: hermes-on-databricks version / commit
+      description: "Output of `git rev-parse --short HEAD` or the release tag."
+      placeholder: "v0.1.0 or 1a2b3c4"
+    validations:
+      required: true
+  - type: input
+    id: hermes-version
+    attributes:
+      label: hermes-agent version
+      description: "What `pip show hermes-agent | grep Version` says inside the App, or what's pinned in `app/requirements.txt`."
+      placeholder: "0.14.0"
+    validations:
+      required: true
+  - type: dropdown
+    id: target
+    attributes:
+      label: Bundle target
+      options:
+        - free (Databricks Free Edition)
+        - dev
+        - prod
+        - local (not deployed)
+    validations:
+      required: true
+  - type: dropdown
+    id: where
+    attributes:
+      label: Where does it break?
+      multiple: true
+      options:
+        - "`databricks bundle validate`"
+        - "`databricks bundle deploy`"
+        - "`databricks bundle run setup_lakebase`"
+        - "`databricks bundle run hermes_app`"
+        - "App startup (FastAPI lifespan)"
+        - "Hermes runtime / `run_conversation`"
+        - "Databricks provider (LLM call)"
+        - "Lakebase / SessionDB"
+        - "UC Volume mirror / `HERMES_HOME`"
+        - "Telegram polling"
+        - "Cron scheduler"
+        - "A specific tool (please name it in the description)"
+        - "Tests"
+        - "Other"
+    validations:
+      required: true
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: A clear description of the failure.
+      placeholder: |
+        e.g. POST /debug/model-turn returns 500 with "Connection error" after
+        the first successful turn.
+    validations:
+      required: true
+  - type: textarea
+    id: what-expected
+    attributes:
+      label: What did you expect?
+      placeholder: |
+        e.g. Repeated turns should succeed indefinitely, with the bearer
+        token refreshed by the supervisor heartbeat.
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Reproduction steps
+      description: Minimal, copy-pasteable.
+      render: bash
+      placeholder: |
+        1. databricks bundle deploy -t free --profile hermes-free
+        2. databricks bundle run setup_lakebase -t free --profile hermes-free
+        3. curl -sf $APP_URL/debug/model-turn -d '{"message":"hi"}'
+        4. ...
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant logs / debug payloads
+      description: |
+        Paste the most-relevant log lines and the relevant `/debug/*` JSON.
+        Useful endpoints: `/health`, `/ready`, `/debug/runtime`,
+        `/debug/supervisor`, `/debug/health-checks`, `/debug/telegram`,
+        `/debug/sessions`, `/debug/events?kind=…`.
+        **Redact secrets first.**
+      render: text
+    validations:
+      required: false
+  - type: textarea
+    id: extra
+    attributes:
+      label: Anything else?
+      description: Workarounds, related issues, theories — anything that helps.
+    validations:
+      required: false

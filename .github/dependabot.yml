@@ -1,0 +1,79 @@
+version: 2
+
+updates:
+  # Python dependencies for the Databricks App.
+  - package-ecosystem: pip
+    directory: "/app"
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: "Australia/Sydney"
+    open-pull-requests-limit: 5
+    labels:
+      - dependencies
+      - python
+    commit-message:
+      prefix: "build(deps)"
+      include: scope
+    groups:
+      # Group all databricks-* updates so the App SP behaviour can be
+      # validated as one coherent change.
+      databricks:
+        patterns:
+          - "databricks-*"
+      # Group FastAPI + uvicorn together — they ship in lockstep most weeks.
+      web:
+        patterns:
+          - "fastapi"
+          - "uvicorn*"
+          - "starlette"
+    ignore:
+      # Hermes pins its own deep deps (openai / pydantic / httpx /
+      # pyyaml / requests / jinja2 / croniter / ...). Don't let
+      # Dependabot fight Hermes — let Hermes' own release cadence
+      # bring those forward.
+      - dependency-name: "hermes-agent"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "openai"
+      - dependency-name: "pydantic"
+      - dependency-name: "pydantic-core"
+      - dependency-name: "PyYAML"
+      - dependency-name: "httpx"
+      - dependency-name: "httpcore"
+      - dependency-name: "requests"
+      - dependency-name: "jinja2"
+      - dependency-name: "croniter"
+
+  # Dev tooling pinned in pyproject.toml.
+  - package-ecosystem: pip
+    directory: "/"
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: "Australia/Sydney"
+    open-pull-requests-limit: 3
+    labels:
+      - dependencies
+      - python
+      - dev-tooling
+    commit-message:
+      prefix: "build(deps-dev)"
+      include: scope
+
+  # GitHub Actions used by .github/workflows/*.yml
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: "Australia/Sydney"
+    open-pull-requests-limit: 3
+    labels:
+      - dependencies
+      - github-actions
+    commit-message:
+      prefix: "ci(deps)"
+      include: scope

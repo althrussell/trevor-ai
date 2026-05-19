@@ -1,0 +1,67 @@
+name: Feature request
+description: Propose a new capability or improvement.
+title: "[feat] <short summary>"
+labels: ["enhancement", "triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to propose something. Please describe
+        the user problem first, then the proposal — proposals that lead
+        with "what" tend to drift away from what's actually needed.
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      multiple: true
+      options:
+        - "Databricks-native toolset (`databricks_*` tools)"
+        - "Hermes provider compatibility (`databricks_provider`)"
+        - "Lakebase / SessionDB"
+        - "UC Volume mirror / `HERMES_HOME`"
+        - "Channels (Telegram / Slack / Discord / Matrix)"
+        - "Cron scheduler"
+        - "Observability (logging / events / `/debug/*`)"
+        - "Bundle / resources / permissions"
+        - "Docs (README / QUICKSTART / docs/*)"
+        - "Tests / CI"
+        - "Other"
+    validations:
+      required: true
+  - type: textarea
+    id: problem
+    attributes:
+      label: What's the problem?
+      description: |
+        What's hard to do today? Who is affected? What's the workaround,
+        and why is the workaround bad?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposal
+      description: |
+        Concretely: what would you change? Sketch the API or the bundle
+        config or the env var, not just the high-level idea.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: |
+        Anything you ruled out, and why. Bonus points for "wait six months
+        and let upstream Hermes do this instead" as an alternative.
+    validations:
+      required: false
+  - type: checkboxes
+    id: scope
+    attributes:
+      label: Scope guardrails
+      description: Check the ones that apply.
+      options:
+        - label: This does **not** require modifying or vendoring `hermes-agent` core.
+        - label: This works on Databricks Free Edition.
+        - label: This preserves the "tools are never silently disabled" invariant.
+        - label: I'm willing to send a PR for this.

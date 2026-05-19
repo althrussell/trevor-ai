@@ -1,0 +1,127 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "hermes-on-databricks"
+version = "0.1.0"
+description = "Run the full NousResearch Hermes agent inside a Databricks App on Databricks Free Edition."
+readme = "README.md"
+license = { file = "LICENSE" }
+requires-python = ">=3.11"
+authors = [
+    { name = "Al Thrussell", email = "althrussell@gmail.com" },
+]
+keywords = [
+    "databricks",
+    "hermes",
+    "agent",
+    "llm",
+    "ai",
+    "lakebase",
+    "unity-catalog",
+    "telegram",
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Software Development :: Libraries :: Application Frameworks",
+]
+
+[project.urls]
+Homepage = "https://github.com/althrussell/trevor-ai"
+Repository = "https://github.com/althrussell/trevor-ai"
+Issues = "https://github.com/althrussell/trevor-ai/issues"
+Changelog = "https://github.com/althrussell/trevor-ai/blob/main/CHANGELOG.md"
+
+[project.optional-dependencies]
+# Dev tooling — install with `pip install -e ".[dev]"`.
+# Keep this tiny on purpose: ruff + pytest + pytest-asyncio cover
+# almost every check the CI runs.
+dev = [
+    "ruff>=0.7.0",
+    "pytest>=8.0",
+    "pytest-asyncio>=0.24",
+]
+
+# ---------------------------------------------------------------------------
+# Setuptools — we don't actually ship a wheel; this exists so `pip install -e`
+# works for the editable dev install. The runtime is the Databricks App, which
+# uses `app/requirements.txt`.
+# ---------------------------------------------------------------------------
+[tool.setuptools]
+packages = []
+
+# ---------------------------------------------------------------------------
+# Ruff — lint + format. Black-compatible defaults; opinionated on imports.
+# ---------------------------------------------------------------------------
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+extend-exclude = [
+    ".sources",
+    ".venv",
+    "build",
+    "dist",
+    "hermes_home_local",
+    ".databricks",
+    "vendor",
+]
+
+[tool.ruff.lint]
+select = [
+    "E",    # pycodestyle errors
+    "W",    # pycodestyle warnings
+    "F",    # pyflakes
+    "I",    # isort
+    "B",    # flake8-bugbear
+    "UP",   # pyupgrade
+    "SIM",  # flake8-simplify
+    "C4",   # flake8-comprehensions
+    "PIE",  # flake8-pie
+    "RUF",  # ruff-specific
+]
+ignore = [
+    "E501",  # let the formatter handle line length
+    "B008",  # FastAPI uses Depends() defaults
+    "SIM108",  # ternaries aren't always clearer
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["B011", "S101"]
+"tests/run_offline_checks.py" = ["E402"]  # sys.path tweaks before imports
+
+[tool.ruff.lint.isort]
+known-first-party = ["hermes_databricks"]
+combine-as-imports = true
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+docstring-code-format = true
+
+# ---------------------------------------------------------------------------
+# Pytest
+# ---------------------------------------------------------------------------
+[tool.pytest.ini_options]
+minversion = "8.0"
+testpaths = ["tests"]
+addopts = [
+    "-ra",
+    "--strict-markers",
+    "--strict-config",
+]
+markers = [
+    "integration: requires a live Databricks workspace",
+    "smoke: hits a deployed App URL",
+]
+asyncio_mode = "auto"
+filterwarnings = [
+    "ignore::DeprecationWarning:google.*",
+    "ignore::DeprecationWarning:pydantic.*",
+]

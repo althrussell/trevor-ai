@@ -1,0 +1,109 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    name: Lint (ruff)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: |
+            pyproject.toml
+
+      - name: Install dev dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+
+      - name: Ruff format check
+        run: ruff format --check .
+
+      - name: Ruff lint
+        run: ruff check .
+
+  offline-checks:
+    name: Offline checks (stdlib only)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Run offline check runner
+        run: |
+          PYTHONPATH=app python3 tests/run_offline_checks.py
+
+  unit-tests:
+    name: Unit tests (pytest)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: |
+            pyproject.toml
+            app/requirements.txt
+
+      - name: Install app + dev dependencies
+        # We install the App requirements so unit tests that import
+        # databricks-sdk / psycopg / httpx etc. resolve. If pip resolution
+        # fails (e.g. transient PyPI hiccup), we still want the lint and
+        # offline check jobs to pass — that's why they're separate jobs.
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r app/requirements.txt || echo "::warning::app/requirements.txt install failed; continuing with dev deps only"
+          pip install -e ".[dev]"
+
+      - name: Run pytest
+        run: |
+          PYTHONPATH=app pytest tests/unit -v --maxfail=5
+
+  bundle-validate:
+    name: Asset Bundle validate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Databricks CLI
+        run: |
+          curl -fsSL https://raw.githubusercontent.com/databricks/setup-cli/main/install.sh | sh
+          databricks --version
+
+      - name: Validate bundle (free target)
+        # Use a dummy profile so the CLI doesn't try to authenticate
+        # against a real workspace. `bundle validate` does not require
+        # network access for schema validation.
+        env:
+          DATABRICKS_HOST: https://example.cloud.databricks.com
+          DATABRICKS_TOKEN: dummy-token-for-validation-only
+        run: |
+          databricks bundle validate -t free || {
+            echo "::warning::bundle validate failed against the 'free' target — this is non-fatal for CI but should be fixed before deploy"
+            exit 1
+          }
