@@ -23,34 +23,34 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
-from typing import Any, Awaitable, Callable, Dict, List, Optional
+from typing import Any
 
 import httpx
 
 from hermes_databricks import config as cfg_mod
 
-
 log = logging.getLogger("hermes_databricks.telegram_polling")
 
-OnMessage = Callable[[int, Optional[str], str], Awaitable[Optional[str]]]
+OnMessage = Callable[[int, str | None, str], Awaitable[str | None]]
 
 
 @dataclass
 class TelegramStatus:
     enabled: bool = True
-    last_update_id: Optional[int] = None
-    last_poll_at: Optional[float] = None
-    last_send_at: Optional[float] = None
+    last_update_id: int | None = None
+    last_poll_at: float | None = None
+    last_send_at: float | None = None
     poll_iterations: int = 0
     poll_errors: int = 0
     rejected_messages: int = 0
     delivered_messages: int = 0
     received_messages: int = 0
-    bot_username: Optional[str] = None
-    allowed_usernames: List[str] = field(default_factory=list)
-    primary_user_handle: Optional[str] = None
-    last_error: Optional[str] = None
+    bot_username: str | None = None
+    allowed_usernames: list[str] = field(default_factory=list)
+    primary_user_handle: str | None = None
+    last_error: str | None = None
 
 
 class TelegramClient:
@@ -62,8 +62,8 @@ class TelegramClient:
         self,
         token: str,
         *,
-        primary_user_handle: Optional[str] = None,
-        allowed_usernames: Optional[List[str]] = None,
+        primary_user_handle: str | None = None,
+        allowed_usernames: list[str] | None = None,
         long_poll_timeout: int = 25,
     ) -> None:
         if not token:
@@ -92,7 +92,7 @@ class TelegramClient:
     # ------------------------------------------------------------------
 
     @classmethod
-    def from_secrets(cls, secrets_scope: str) -> Optional["TelegramClient"]:
+    def from_secrets(cls, secrets_scope: str) -> TelegramClient | None:
         token = cfg_mod.get_secret(secrets_scope, "telegram_bot_token")
         if not token:
             log.info("telegram_bot_token not in scope %s; Telegram disabled", secrets_scope)
@@ -106,7 +106,7 @@ class TelegramClient:
     # API helpers
     # ------------------------------------------------------------------
 
-    async def get_me(self, client: httpx.AsyncClient) -> Optional[Dict[str, Any]]:
+    async def get_me(self, client: httpx.AsyncClient) -> dict[str, Any] | None:
         try:
             r = await client.get(f"{self.api}/getMe")
             r.raise_for_status()
@@ -117,10 +117,12 @@ class TelegramClient:
             log.exception("Telegram getMe failed")
         return None
 
-    async def delete_webhook(self, client: Optional[httpx.AsyncClient] = None) -> None:
+    async def delete_webhook(self, client: httpx.AsyncClient | None = None) -> None:
         async def _do(c: httpx.AsyncClient) -> None:
             try:
-                r = await c.get(f"{self.api}/deleteWebhook", params={"drop_pending_updates": "false"})
+                r = await c.get(
+                    f"{self.api}/deleteWebhook", params={"drop_pending_updates": "false"}
+                )
                 r.raise_for_status()
             except Exception:
                 log.exception("Telegram deleteWebhook failed (continuing)")
@@ -131,13 +133,15 @@ class TelegramClient:
             async with httpx.AsyncClient(timeout=10) as c:
                 await _do(c)
 
-    async def send_message(self, chat_id: int, text: str, *, parse_mode: Optional[str] = "Markdown") -> bool:
+    async def send_message(
+        self, chat_id: int, text: str, *, parse_mode: str | None = "Markdown"
+    ) -> bool:
         """Send a text message, falling back to plain on Markdown errors."""
         if not text:
             return False
         # Telegram caps messages at 4096 characters.
         max_chunk = 4000
-        chunks = [text[i:i + max_chunk] for i in range(0, len(text), max_chunk)] or [""]
+        chunks = [text[i : i + max_chunk] for i in range(0, len(text), max_chunk)] or [""]
 
         ok_all = True
         async with httpx.AsyncClient(timeout=30) as client:
@@ -156,7 +160,7 @@ class TelegramClient:
             self._status.delivered_messages += 1
         return ok_all
 
-    async def _post_send(self, client: httpx.AsyncClient, payload: Dict[str, Any]) -> bool:
+    async def _post_send(self, client: httpx.AsyncClient, payload: dict[str, Any]) -> bool:
         try:
             r = await client.post(f"{self.api}/sendMessage", json=payload)
             if r.status_code >= 400:
@@ -180,7 +184,7 @@ class TelegramClient:
 
     async def poll_loop(self, on_message: OnMessage) -> None:
         await self.delete_webhook()
-        offset: Optional[int] = None
+        offset: int | None = None
         backoff = 1.0
 
         async with httpx.AsyncClient(timeout=self.long_poll_timeout + 10) as client:
@@ -190,7 +194,7 @@ class TelegramClient:
 
             while not self._stopping:
                 try:
-                    params: Dict[str, Any] = {
+                    params: dict[str, Any] = {
                         "timeout": self.long_poll_timeout,
                         "allowed_updates": '["message","edited_message"]',
                     }
@@ -229,7 +233,9 @@ class TelegramClient:
                     await asyncio.sleep(min(backoff, 60))
                     backoff = min(backoff * 2, 60)
 
-    async def _dispatch(self, client: httpx.AsyncClient, msg: Dict[str, Any], on_message: OnMessage) -> None:
+    async def _dispatch(
+        self, client: httpx.AsyncClient, msg: dict[str, Any], on_message: OnMessage
+    ) -> None:
         chat = msg.get("chat") or {}
         chat_id = chat.get("id")
         if chat_id is None:
@@ -243,11 +249,13 @@ class TelegramClient:
             self._status.rejected_messages += 1
             log.warning(
                 "Rejecting Telegram message from non-allowlisted user",
-                extra={"extras": {
-                    "username": username,
-                    "primary": self.primary_user_handle,
-                    "allowed": self.allowed_usernames,
-                }},
+                extra={
+                    "extras": {
+                        "username": username,
+                        "primary": self.primary_user_handle,
+                        "allowed": self.allowed_usernames,
+                    }
+                },
             )
             await self.send_message(
                 chat_id,
@@ -273,7 +281,7 @@ class TelegramClient:
         if reply:
             await self.send_message(chat_id, str(reply))
 
-    def _is_allowed(self, username: Optional[str]) -> bool:
+    def _is_allowed(self, username: str | None) -> bool:
         if not self.allowed_usernames and not self.primary_user_handle:
             # No allowlist configured → reject by default (least privilege).
             return False
@@ -288,7 +296,7 @@ class TelegramClient:
     async def stop(self) -> None:
         self._stopping = True
 
-    def status(self) -> Dict[str, Any]:
+    def status(self) -> dict[str, Any]:
         s = self._status
         return {
             "enabled": s.enabled,
@@ -307,7 +315,7 @@ class TelegramClient:
             "stopping": self._stopping,
         }
 
-    async def health_probe(self) -> Dict[str, Any]:
+    async def health_probe(self) -> dict[str, Any]:
         s = self._status
         # Healthy if we polled in the last 2x long_poll_timeout window.
         threshold = (self.long_poll_timeout or 25) * 2 + 5

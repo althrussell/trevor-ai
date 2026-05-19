@@ -7,6 +7,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- CI: make the lint, offline-checks, and unit-tests jobs actually
+  pass on `main` and on dependabot PRs. The initial workflow shipped
+  with strict `ruff format --check .` enabled but the pre-existing
+  code had never been run through the formatter, so every push and
+  every dependabot PR failed before the dep change was evaluated.
+  Reformatted 22 files via `ruff format`, applied 392 auto-fixes via
+  `ruff check --fix`, and 13 `--unsafe-fixes` modernizations
+  (mostly `List`→`list`, `Tuple`→`tuple`, `startswith` tuple
+  collapsing, `contextlib.suppress`, `zip(..., strict=True)`). One
+  manual fix: `raise HTTPException(...) from None` in the cron
+  `KeyError` handler so the trace doesn't dump a redundant inner
+  exception. No runtime behaviour change — `tests/run_offline_checks.py`
+  still passes 37/0.
+- CI: add per-file ruff ignore for `sql/setup_lakebase.py` covering
+  `F821` (`dbutils` / `spark` are notebook globals) and `E402`
+  (Databricks notebooks legitimately interleave widgets and
+  imports).
+- CI: make the `Asset Bundle validate` job non-blocking
+  (`continue-on-error: true`). The Databricks CLI's `bundle
+  validate` always probes the workspace for `/scim/v2/Me`, so it
+  cannot run without auth — passing a stub `DATABRICKS_HOST` fails
+  DNS resolution. The job now (a) runs `databricks bundle schema`
+  which is offline-capable and catches CLI/DSL regressions, then
+  (b) attempts `bundle validate -t free` against the stub host and
+  emits a `::warning::` if (as expected) it can't reach a
+  workspace. Real validation belongs in `scripts/deploy.sh` before
+  each deploy.
+- CI: bump `actions/checkout@v4 → v5` and `actions/setup-python@v5 → v6`
+  to drop the Node.js 20 deprecation warnings (matches the
+  upgrades dependabot PRs #1 and #2 were proposing).
+
 ### Added
 
 - `NOTICE.md` — full third-party attribution: runtime dependencies

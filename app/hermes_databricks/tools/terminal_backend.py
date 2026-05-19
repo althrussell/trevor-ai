@@ -27,8 +27,6 @@ import shutil
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
-from typing import List, Optional
-
 
 log = logging.getLogger("hermes_databricks.tools.terminal_backend")
 
@@ -42,8 +40,18 @@ HARD_OUTPUT_BYTES = 64 * 1024  # per stream
 # Commands we never let the agent run, even via the in-app subprocess
 # backend. Mostly a sanity floor; the broader guard is the cwd restriction.
 COMMAND_DENYLIST = {
-    "rm", "dd", "mkfs", "shutdown", "reboot", "halt", "poweroff",
-    "passwd", "useradd", "userdel", "groupadd", "iptables",
+    "rm",
+    "dd",
+    "mkfs",
+    "shutdown",
+    "reboot",
+    "halt",
+    "poweroff",
+    "passwd",
+    "useradd",
+    "userdel",
+    "groupadd",
+    "iptables",
 }
 
 
@@ -55,9 +63,9 @@ class BackendUnavailable(Exception):
 class TerminalResult:
     ok: bool
     backend: str
-    cmd: List[str]
+    cmd: list[str]
     cwd: str
-    exit_code: Optional[int]
+    exit_code: int | None
     stdout: str
     stderr: str
     truncated_stdout: bool = False
@@ -85,7 +93,7 @@ def workspace_dir(hermes_home: Path) -> Path:
     return ws.resolve()
 
 
-def _validate_cwd(workspace: Path, requested_cwd: Optional[str]) -> Path:
+def _validate_cwd(workspace: Path, requested_cwd: str | None) -> Path:
     """Ensure ``requested_cwd`` lives under ``workspace``."""
     if not requested_cwd:
         return workspace
@@ -99,13 +107,13 @@ def _validate_cwd(workspace: Path, requested_cwd: Optional[str]) -> Path:
 
 
 def run(
-    cmd: List[str],
+    cmd: list[str],
     *,
     backend: str = "in_app_subprocess",
-    hermes_home: Optional[Path] = None,
-    cwd: Optional[str] = None,
+    hermes_home: Path | None = None,
+    cwd: str | None = None,
     timeout: float = DEFAULT_TIMEOUT_SECONDS,
-    env: Optional[dict] = None,
+    env: dict | None = None,
 ) -> TerminalResult:
     """Execute ``cmd`` (list of arguments) via the selected backend."""
     if not isinstance(cmd, list) or not all(isinstance(a, str) for a in cmd):
@@ -115,8 +123,13 @@ def run(
 
     if backend == "disabled":
         return TerminalResult(
-            ok=False, backend=backend, cmd=cmd, cwd="", exit_code=None,
-            stdout="", stderr="",
+            ok=False,
+            backend=backend,
+            cmd=cmd,
+            cwd="",
+            exit_code=None,
+            stdout="",
+            stderr="",
             note="terminal backend is disabled (HERMES_DATABRICKS_TERMINAL_BACKEND=disabled)",
         )
 
@@ -125,8 +138,13 @@ def run(
 
     if backend == "databricks_job":
         return TerminalResult(
-            ok=False, backend=backend, cmd=cmd, cwd="", exit_code=None,
-            stdout="", stderr="",
+            ok=False,
+            backend=backend,
+            cmd=cmd,
+            cwd="",
+            exit_code=None,
+            stdout="",
+            stderr="",
             note=(
                 "databricks_job backend is not yet wired. Configure a job "
                 "in resources/jobs.yml that accepts a 'cmd' parameter and "
@@ -136,8 +154,13 @@ def run(
 
     if backend == "external_sandbox":
         return TerminalResult(
-            ok=False, backend=backend, cmd=cmd, cwd="", exit_code=None,
-            stdout="", stderr="",
+            ok=False,
+            backend=backend,
+            cmd=cmd,
+            cwd="",
+            exit_code=None,
+            stdout="",
+            stderr="",
             note=(
                 "external_sandbox backend requires explicit configuration "
                 "(MODAL_TOKEN_*, DAYTONA_*, VERCEL_*). Set HERMES_DATABRICKS_"
@@ -149,21 +172,29 @@ def run(
 
 
 def _run_in_app(
-    cmd: List[str],
+    cmd: list[str],
     *,
-    hermes_home: Optional[Path],
-    cwd: Optional[str],
+    hermes_home: Path | None,
+    cwd: str | None,
     timeout: float,
-    env: Optional[dict],
+    env: dict | None,
 ) -> TerminalResult:
-    home = Path(hermes_home or os.environ.get("HERMES_HOME") or "/tmp/hermes_cache/hermes_home").resolve()
+    home = Path(
+        hermes_home or os.environ.get("HERMES_HOME") or "/tmp/hermes_cache/hermes_home"
+    ).resolve()
     workspace = workspace_dir(home)
     try:
         final_cwd = _validate_cwd(workspace, cwd)
     except ValueError as exc:
         return TerminalResult(
-            ok=False, backend="in_app_subprocess", cmd=cmd, cwd="", exit_code=None,
-            stdout="", stderr="", note=str(exc),
+            ok=False,
+            backend="in_app_subprocess",
+            cmd=cmd,
+            cwd="",
+            exit_code=None,
+            stdout="",
+            stderr="",
+            note=str(exc),
         )
 
     timeout = max(1.0, min(float(timeout or DEFAULT_TIMEOUT_SECONDS), HARD_TIMEOUT_SECONDS))
@@ -171,8 +202,13 @@ def _run_in_app(
     head = Path(cmd[0]).name.lower()
     if head in COMMAND_DENYLIST:
         return TerminalResult(
-            ok=False, backend="in_app_subprocess", cmd=cmd, cwd=str(final_cwd),
-            exit_code=None, stdout="", stderr="",
+            ok=False,
+            backend="in_app_subprocess",
+            cmd=cmd,
+            cwd=str(final_cwd),
+            exit_code=None,
+            stdout="",
+            stderr="",
             note=f"command '{head}' is in the in-app denylist",
         )
 
@@ -180,8 +216,13 @@ def _run_in_app(
     # misconfiguration clearly instead of letting subprocess.run raise.
     if "/" not in cmd[0] and shutil.which(cmd[0]) is None:
         return TerminalResult(
-            ok=False, backend="in_app_subprocess", cmd=cmd, cwd=str(final_cwd),
-            exit_code=None, stdout="", stderr="",
+            ok=False,
+            backend="in_app_subprocess",
+            cmd=cmd,
+            cwd=str(final_cwd),
+            exit_code=None,
+            stdout="",
+            stderr="",
             note=f"executable not found on PATH: {cmd[0]!r}",
         )
 
@@ -219,18 +260,32 @@ def _run_in_app(
             truncated_stderr=trunc_err,
         )
     except subprocess.TimeoutExpired as exc:
-        log.warning("terminal command timed out", extra={"extras": {"cmd": cmd, "timeout": timeout}})
+        log.warning(
+            "terminal command timed out", extra={"extras": {"cmd": cmd, "timeout": timeout}}
+        )
         return TerminalResult(
-            ok=False, backend="in_app_subprocess", cmd=cmd, cwd=str(final_cwd),
+            ok=False,
+            backend="in_app_subprocess",
+            cmd=cmd,
+            cwd=str(final_cwd),
             exit_code=None,
-            stdout=(exc.stdout or b"").decode("utf-8", errors="replace") if isinstance(exc.stdout, bytes) else (exc.stdout or ""),
-            stderr=(exc.stderr or b"").decode("utf-8", errors="replace") if isinstance(exc.stderr, bytes) else (exc.stderr or ""),
+            stdout=(exc.stdout or b"").decode("utf-8", errors="replace")
+            if isinstance(exc.stdout, bytes)
+            else (exc.stdout or ""),
+            stderr=(exc.stderr or b"").decode("utf-8", errors="replace")
+            if isinstance(exc.stderr, bytes)
+            else (exc.stderr or ""),
             note=f"timeout after {timeout}s",
         )
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         log.exception("terminal command raised")
         return TerminalResult(
-            ok=False, backend="in_app_subprocess", cmd=cmd, cwd=str(final_cwd),
-            exit_code=None, stdout="", stderr="",
+            ok=False,
+            backend="in_app_subprocess",
+            cmd=cmd,
+            cwd=str(final_cwd),
+            exit_code=None,
+            stdout="",
+            stderr="",
             note=f"{type(exc).__name__}: {exc}",
         )

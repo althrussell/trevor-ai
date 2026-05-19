@@ -16,8 +16,7 @@ import logging
 import re
 import sys
 import time
-from typing import Any, Dict
-
+from typing import Any
 
 _REDACT_PATTERNS = [
     # Bearer tokens / standard Authorization headers
@@ -65,7 +64,7 @@ class RedactingFormatter(logging.Formatter):
         except Exception:
             base_message = str(record.msg)
 
-        payload: Dict[str, Any] = {
+        payload: dict[str, Any] = {
             "ts": round(time.time(), 3),
             self.level_field: record.levelname,
             "logger": record.name,
@@ -94,7 +93,7 @@ def configure_logging(cfg) -> None:
     handler.setFormatter(RedactingFormatter())
 
     for logger_name in (
-        "",                         # root
+        "",  # root
         "hermes_databricks",
         "hermes",
         "agent",

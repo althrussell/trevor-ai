@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any
 
 
 def _config_path() -> Path:
@@ -19,8 +19,8 @@ def _config_path() -> Path:
     return Path(home) / "config.yaml"
 
 
-def describe(enabled: bool) -> Dict[str, Any]:
-    out: Dict[str, Any] = {
+def describe(enabled: bool) -> dict[str, Any]:
+    out: dict[str, Any] = {
         "enabled": bool(enabled),
         "config_path": str(_config_path()),
     }
@@ -34,9 +34,10 @@ def describe(enabled: bool) -> Dict[str, Any]:
         )
         return out
 
-    servers: List[Dict[str, Any]] = []
+    servers: list[dict[str, Any]] = []
     try:
         import yaml  # type: ignore
+
         path = _config_path()
         if path.exists():
             with path.open("r", encoding="utf-8") as f:
@@ -45,13 +46,16 @@ def describe(enabled: bool) -> Dict[str, Any]:
             if isinstance(raw, list):
                 for entry in raw:
                     if isinstance(entry, dict):
-                        servers.append({
-                            "name": entry.get("name"),
-                            "transport": entry.get("transport") or ("http" if entry.get("url") else "stdio"),
-                            "url": entry.get("url"),
-                            "command": entry.get("command"),
-                        })
-    except Exception as exc:  # noqa: BLE001
+                        servers.append(
+                            {
+                                "name": entry.get("name"),
+                                "transport": entry.get("transport")
+                                or ("http" if entry.get("url") else "stdio"),
+                                "url": entry.get("url"),
+                                "command": entry.get("command"),
+                            }
+                        )
+    except Exception as exc:
         out["status"] = "error"
         out["reason"] = f"failed to parse MCP config: {type(exc).__name__}: {exc}"
         return out
@@ -61,6 +65,10 @@ def describe(enabled: bool) -> Dict[str, Any]:
     return out
 
 
-def list_servers() -> Dict[str, Any]:
-    enabled = os.environ.get("HERMES_DATABRICKS_MCP_ENABLED", "false").lower() in {"1", "true", "yes"}
+def list_servers() -> dict[str, Any]:
+    enabled = os.environ.get("HERMES_DATABRICKS_MCP_ENABLED", "false").lower() in {
+        "1",
+        "true",
+        "yes",
+    }
     return describe(enabled)

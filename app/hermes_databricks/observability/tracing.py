@@ -11,14 +11,19 @@ import contextlib
 import logging
 import time
 import uuid
-from typing import Any, Callable, Dict, Iterator, Optional
-
+from collections.abc import Callable, Iterator
+from typing import Any
 
 log = logging.getLogger("hermes_databricks.observability.tracing")
 
 
 @contextlib.contextmanager
-def span(name: str, *, attrs: Optional[Dict[str, Any]] = None, sink: Optional[Callable[[Dict[str, Any]], None]] = None) -> Iterator[Dict[str, Any]]:
+def span(
+    name: str,
+    *,
+    attrs: dict[str, Any] | None = None,
+    sink: Callable[[dict[str, Any]], None] | None = None,
+) -> Iterator[dict[str, Any]]:
     """Time a block and report start/stop to ``sink`` if provided.
 
     Yields a mutable dict the caller can write attributes to; on exit
@@ -27,7 +32,7 @@ def span(name: str, *, attrs: Optional[Dict[str, Any]] = None, sink: Optional[Ca
     """
     span_id = uuid.uuid4().hex
     started = time.perf_counter()
-    payload: Dict[str, Any] = {
+    payload: dict[str, Any] = {
         "span_id": span_id,
         "name": name,
         "started_at": time.time(),
@@ -38,6 +43,7 @@ def span(name: str, *, attrs: Optional[Dict[str, Any]] = None, sink: Optional[Ca
     ml = None
     try:
         import mlflow  # type: ignore
+
         ml = mlflow.start_span(name)
         ml.__enter__()
     except Exception:
@@ -45,17 +51,15 @@ def span(name: str, *, attrs: Optional[Dict[str, Any]] = None, sink: Optional[Ca
 
     try:
         yield payload
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         payload["status"] = "error"
         payload["error"] = f"{type(exc).__name__}: {exc}"
         raise
     finally:
         payload["elapsed_ms"] = round((time.perf_counter() - started) * 1000.0, 2)
         if ml is not None:
-            try:
+            with contextlib.suppress(Exception):
                 ml.__exit__(None, None, None)
-            except Exception:
-                pass
         if sink is not None:
             try:
                 sink(payload)

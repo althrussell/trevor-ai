@@ -30,6 +30,7 @@ print(f"schema_name={schema_name}")
 # COMMAND ----------
 
 import uuid
+
 from databricks.sdk import WorkspaceClient
 
 w = WorkspaceClient()
@@ -79,6 +80,7 @@ OPTIONAL_DDL_MARKERS = (
 
 def _is_optional(stmt: str) -> bool:
     return any(marker in stmt for marker in OPTIONAL_DDL_MARKERS)
+
 
 DDL_TABLES = [
     """

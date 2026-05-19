@@ -46,12 +46,11 @@ import logging
 import os
 import re
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from hermes_databricks.config import Config, load as load_cfg
-from hermes_databricks.tools.sql_guard import validate_readonly
 from hermes_databricks.tools import terminal_backend as _term
-
+from hermes_databricks.tools.sql_guard import validate_readonly
 
 log = logging.getLogger("hermes_databricks.tools.databricks_toolset")
 
@@ -70,6 +69,7 @@ def _client():
     if _WORKSPACE_CLIENT is not None:
         return _WORKSPACE_CLIENT
     from databricks.sdk import WorkspaceClient  # type: ignore
+
     _WORKSPACE_CLIENT = WorkspaceClient()
     return _WORKSPACE_CLIENT
 
@@ -90,14 +90,14 @@ def _ok(**payload) -> str:
 # ---------------------------------------------------------------------
 
 
-def _allowed_tables() -> List[str]:
+def _allowed_tables() -> list[str]:
     raw = os.environ.get("HERMES_DATABRICKS_QUERY_ALLOWED_TABLES", "")
     return [s.strip() for s in raw.split(",") if s.strip()]
 
 
-def _allowed_job_ids() -> List[int]:
+def _allowed_job_ids() -> list[int]:
     raw = os.environ.get("HERMES_DATABRICKS_JOB_ID_ALLOWLIST", "")
-    out: List[int] = []
+    out: list[int] = []
     for s in raw.split(","):
         s = s.strip()
         if not s:
@@ -109,18 +109,18 @@ def _allowed_job_ids() -> List[int]:
     return out
 
 
-def _allowed_volume_prefixes(cfg: Config) -> List[str]:
+def _allowed_volume_prefixes(cfg: Config) -> list[str]:
     raw = os.environ.get("HERMES_DATABRICKS_VOLUME_READ_PREFIXES", "")
     out = [s.strip() for s in raw.split(",") if s.strip()]
     out.extend([cfg.hermes_home_volume_path, cfg.artifacts_volume_path])
-    seen: List[str] = []
+    seen: list[str] = []
     for p in out:
         if p and p not in seen:
             seen.append(p)
     return seen
 
 
-def _table_match(full_name: str, patterns: List[str]) -> bool:
+def _table_match(full_name: str, patterns: list[str]) -> bool:
     if not patterns:
         return False
     full_name = full_name.lower()
@@ -135,12 +135,9 @@ def _table_match(full_name: str, patterns: List[str]) -> bool:
     return False
 
 
-def _path_match(path: str, prefixes: List[str]) -> bool:
+def _path_match(path: str, prefixes: list[str]) -> bool:
     path = path.strip()
-    for p in prefixes:
-        if path == p or path.startswith(p.rstrip("/") + "/"):
-            return True
-    return False
+    return any(path == p or path.startswith(p.rstrip("/") + "/") for p in prefixes)
 
 
 # ---------------------------------------------------------------------
@@ -163,7 +160,7 @@ def _h_serving_endpoint_status(args: dict, **_kw) -> str:
             config=config.as_dict() if config and hasattr(config, "as_dict") else None,
             last_updated=str(getattr(ep, "last_updated_timestamp", None) or ""),
         )
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         return _err(f"{type(exc).__name__}: {exc}", endpoint_name=endpoint_name)
 
 
@@ -184,13 +181,15 @@ def _h_uc_describe_table(args: dict, **_kw) -> str:
         w = _client()
         t = w.tables.get(full_table_name)
         cols = []
-        for c in (getattr(t, "columns", None) or []):
-            cols.append({
-                "name": getattr(c, "name", None),
-                "type_text": getattr(c, "type_text", None),
-                "comment": getattr(c, "comment", None),
-                "nullable": getattr(c, "nullable", None),
-            })
+        for c in getattr(t, "columns", None) or []:
+            cols.append(
+                {
+                    "name": getattr(c, "name", None),
+                    "type_text": getattr(c, "type_text", None),
+                    "comment": getattr(c, "comment", None),
+                    "nullable": getattr(c, "nullable", None),
+                }
+            )
         return _ok(
             name=full_table_name,
             comment=getattr(t, "comment", None),
@@ -198,7 +197,7 @@ def _h_uc_describe_table(args: dict, **_kw) -> str:
             columns=cols,
             owner=getattr(t, "owner", None),
         )
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         return _err(f"{type(exc).__name__}: {exc}", full_table_name=full_table_name)
 
 
@@ -221,10 +220,13 @@ def _h_uc_query_readonly(args: dict, **_kw) -> str:
         row_limit = 200
     log.info(
         "uc_query_readonly",
-        extra={"extras": {"sql_head": guard.normalised.split("\n", 1)[0][:120], "row_limit": row_limit}},
+        extra={
+            "extras": {"sql_head": guard.normalised.split("\n", 1)[0][:120], "row_limit": row_limit}
+        },
     )
     try:
         from databricks.sdk.service import sql as sql_mod  # type: ignore
+
         w = _client()
         resp = w.statement_execution.execute_statement(
             statement=guard.normalised,
@@ -238,10 +240,12 @@ def _h_uc_query_readonly(args: dict, **_kw) -> str:
         state = getattr(getattr(resp, "status", None), "state", None)
         result = getattr(resp, "result", None)
         manifest = getattr(resp, "manifest", None)
-        cols: List[Dict[str, Any]] = []
+        cols: list[dict[str, Any]] = []
         if manifest is not None and getattr(manifest, "schema", None) is not None:
-            for c in (manifest.schema.columns or []):
-                cols.append({"name": getattr(c, "name", None), "type_text": getattr(c, "type_text", None)})
+            for c in manifest.schema.columns or []:
+                cols.append(
+                    {"name": getattr(c, "name", None), "type_text": getattr(c, "type_text", None)}
+                )
         rows = getattr(result, "data_array", None) or []
         return _ok(
             sql=guard.normalised,
@@ -252,7 +256,7 @@ def _h_uc_query_readonly(args: dict, **_kw) -> str:
             rows=rows,
             row_count=len(rows),
         )
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         return _err(f"{type(exc).__name__}: {exc}")
 
 
@@ -285,9 +289,12 @@ def _h_volume_read(args: dict, **_kw) -> str:
             truncated = True
         try:
             text = contents.decode("utf-8")
-            return _ok(path=path, encoding="utf-8", text=text, truncated=truncated, size=len(contents))
+            return _ok(
+                path=path, encoding="utf-8", text=text, truncated=truncated, size=len(contents)
+            )
         except UnicodeDecodeError:
             import base64
+
             return _ok(
                 path=path,
                 encoding="base64",
@@ -295,7 +302,7 @@ def _h_volume_read(args: dict, **_kw) -> str:
                 truncated=truncated,
                 size=len(contents),
             )
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         return _err(f"{type(exc).__name__}: {exc}", path=path)
 
 
@@ -318,24 +325,26 @@ def _h_volume_write_agent_note(args: dict, **_kw) -> str:
             data = json.dumps(content, default=str).encode("utf-8")
         w.files.upload(target, contents=io.BytesIO(data), overwrite=True)
         return _ok(path=target, bytes_written=len(data))
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         return _err(f"{type(exc).__name__}: {exc}", path=target)
 
 
 def _h_jobs_list(_args: dict, **_kw) -> str:
     try:
         w = _client()
-        out: List[Dict[str, Any]] = []
+        out: list[dict[str, Any]] = []
         for j in w.jobs.list():
             settings = getattr(j, "settings", None)
-            out.append({
-                "job_id": getattr(j, "job_id", None),
-                "name": getattr(settings, "name", None),
-                "created_time": str(getattr(j, "created_time", None) or ""),
-                "creator_user_name": getattr(j, "creator_user_name", None),
-            })
+            out.append(
+                {
+                    "job_id": getattr(j, "job_id", None),
+                    "name": getattr(settings, "name", None),
+                    "created_time": str(getattr(j, "created_time", None) or ""),
+                    "creator_user_name": getattr(j, "creator_user_name", None),
+                }
+            )
         return _ok(count=len(out), jobs=out)
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         return _err(f"{type(exc).__name__}: {exc}")
 
 
@@ -361,7 +370,7 @@ def _h_jobs_run_allowlist(args: dict, **_kw) -> str:
             run_id=getattr(run, "run_id", None),
             number_in_job=getattr(run, "number_in_job", None),
         )
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         return _err(f"{type(exc).__name__}: {exc}", job_id=job_id_int)
 
 
@@ -382,7 +391,7 @@ def _h_terminal(args: dict, **_kw) -> str:
             timeout=timeout,
         )
         return json.dumps(result.to_dict(), ensure_ascii=False, default=str)
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         return _err(f"{type(exc).__name__}: {exc}")
 
 
@@ -395,12 +404,12 @@ def _h_terminal(args: dict, **_kw) -> str:
 class _ToolSpec:
     name: str
     description: str
-    parameters: Dict[str, Any]
+    parameters: dict[str, Any]
     handler: Any
     emoji: str = ""
 
 
-_TOOL_SPECS: List[_ToolSpec] = [
+_TOOL_SPECS: list[_ToolSpec] = [
     _ToolSpec(
         name="databricks_serving_endpoint_status",
         description="Return the configuration and state of a Databricks Model Serving endpoint.",
@@ -420,7 +429,10 @@ _TOOL_SPECS: List[_ToolSpec] = [
         parameters={
             "type": "object",
             "properties": {
-                "full_table_name": {"type": "string", "description": "Fully-qualified name: catalog.schema.table"}
+                "full_table_name": {
+                    "type": "string",
+                    "description": "Fully-qualified name: catalog.schema.table",
+                }
             },
             "required": ["full_table_name"],
         },
@@ -437,8 +449,14 @@ _TOOL_SPECS: List[_ToolSpec] = [
         parameters={
             "type": "object",
             "properties": {
-                "sql": {"type": "string", "description": "The SELECT/WITH SQL statement to execute."},
-                "row_limit": {"type": "integer", "description": "Maximum rows to return. Default 200, max 5000."},
+                "sql": {
+                    "type": "string",
+                    "description": "The SELECT/WITH SQL statement to execute.",
+                },
+                "row_limit": {
+                    "type": "integer",
+                    "description": "Maximum rows to return. Default 200, max 5000.",
+                },
             },
             "required": ["sql"],
         },
@@ -452,7 +470,10 @@ _TOOL_SPECS: List[_ToolSpec] = [
             "type": "object",
             "properties": {
                 "path": {"type": "string", "description": "Absolute /Volumes/... path."},
-                "max_bytes": {"type": "integer", "description": "Truncate the response to this many bytes."},
+                "max_bytes": {
+                    "type": "integer",
+                    "description": "Truncate the response to this many bytes.",
+                },
             },
             "required": ["path"],
         },
@@ -465,8 +486,14 @@ _TOOL_SPECS: List[_ToolSpec] = [
         parameters={
             "type": "object",
             "properties": {
-                "relative_path": {"type": "string", "description": "Relative path under the artifacts volume's agent-notes/ subpath."},
-                "content": {"type": "string", "description": "Note content. JSON-serialisable values are also accepted."},
+                "relative_path": {
+                    "type": "string",
+                    "description": "Relative path under the artifacts volume's agent-notes/ subpath.",
+                },
+                "content": {
+                    "type": "string",
+                    "description": "Note content. JSON-serialisable values are also accepted.",
+                },
             },
             "required": ["relative_path", "content"],
         },
@@ -487,7 +514,10 @@ _TOOL_SPECS: List[_ToolSpec] = [
             "type": "object",
             "properties": {
                 "job_id": {"type": "integer", "description": "Job id to run."},
-                "parameters": {"type": "object", "description": "Optional notebook_params/job parameters."},
+                "parameters": {
+                    "type": "object",
+                    "description": "Optional notebook_params/job parameters.",
+                },
             },
             "required": ["job_id"],
         },
@@ -504,8 +534,15 @@ _TOOL_SPECS: List[_ToolSpec] = [
         parameters={
             "type": "object",
             "properties": {
-                "cmd": {"type": "array", "items": {"type": "string"}, "description": "Command + arguments as a list (no shell string)."},
-                "cwd": {"type": "string", "description": "Optional sub-directory under the workspace."},
+                "cmd": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Command + arguments as a list (no shell string).",
+                },
+                "cwd": {
+                    "type": "string",
+                    "description": "Optional sub-directory under the workspace.",
+                },
                 "timeout": {"type": "number", "description": "Seconds; default 60, max 600."},
             },
             "required": ["cmd"],
@@ -525,12 +562,13 @@ def _toolset_check_fn() -> bool:
     """
     try:
         from databricks.sdk import WorkspaceClient  # noqa: F401
+
         return True
     except Exception:
         return False
 
 
-def register_databricks_toolset(cfg: Optional[Config] = None, *, home_fs: Optional[object] = None) -> int:
+def register_databricks_toolset(cfg: Config | None = None, *, home_fs: object | None = None) -> int:
     """Register every Databricks tool with Hermes' tool registry.
 
     Idempotent (uses ``override=True``). Returns the number of tools
@@ -540,7 +578,9 @@ def register_databricks_toolset(cfg: Optional[Config] = None, *, home_fs: Option
     try:
         from tools.registry import registry as _registry  # type: ignore
     except Exception:
-        log.debug("Hermes tools.registry unavailable; databricks toolset not registered", exc_info=True)
+        log.debug(
+            "Hermes tools.registry unavailable; databricks toolset not registered", exc_info=True
+        )
         return 0
 
     count = 0
@@ -569,5 +609,5 @@ def register_databricks_toolset(cfg: Optional[Config] = None, *, home_fs: Option
     return count
 
 
-def tool_names() -> List[str]:
+def tool_names() -> list[str]:
     return [s.name for s in _TOOL_SPECS]

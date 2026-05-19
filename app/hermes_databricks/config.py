@@ -18,7 +18,6 @@ import os
 from dataclasses import dataclass, field
 from functools import lru_cache
 from pathlib import Path
-from typing import Optional
 
 
 def _bool_env(name: str, default: bool = False) -> bool:
@@ -152,7 +151,7 @@ def _safe_b64decode(value: str) -> str:
         return value
 
 
-def get_secret(scope: str, key: str) -> Optional[str]:
+def get_secret(scope: str, key: str) -> str | None:
     """Best-effort secret resolution.
 
     1. Env var ``DATABRICKS_SECRET_<SCOPE>_<KEY>`` if the App resource

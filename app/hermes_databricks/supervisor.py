@@ -17,11 +17,9 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from typing import List, Optional
 
 from hermes_databricks.config import Config
 from hermes_databricks.health import HealthRegistry
-
 
 log = logging.getLogger("hermes_databricks.supervisor")
 
@@ -34,7 +32,7 @@ class HermesSupervisor:
         self.health = health
         self.runtime = None  # type: ignore[assignment]
         self.telegram = None  # type: ignore[assignment]
-        self._tasks: List[asyncio.Task] = []
+        self._tasks: list[asyncio.Task] = []
         self._stopped = False
 
     # ------------------------------------------------------------------
@@ -70,7 +68,9 @@ class HermesSupervisor:
                 "agent": self.cfg.agent_name,
                 "model": self.cfg.llm_endpoint,
                 "telegram_enabled": bool(self.telegram),
-                "cron_available": bool(getattr(self.runtime, "cron_available", False)) if self.runtime else False,
+                "cron_available": bool(getattr(self.runtime, "cron_available", False))
+                if self.runtime
+                else False,
                 "tasks": [t.get_name() for t in self._tasks],
             },
         )
@@ -93,7 +93,7 @@ class HermesSupervisor:
                 await task
             except asyncio.CancelledError:
                 pass
-            except Exception:  # noqa: BLE001
+            except Exception:
                 log.exception("background task raised on shutdown")
         self._tasks.clear()
 
@@ -120,7 +120,7 @@ class HermesSupervisor:
     async def _start_runtime(self) -> None:
         try:
             from hermes_databricks.runtime import HermesRuntime
-        except Exception:  # noqa: BLE001
+        except Exception:
             log.exception("HermesRuntime import failed; degraded mode")
             return
 
@@ -150,7 +150,7 @@ class HermesSupervisor:
                 runtime.health_probe_model,
                 description="Databricks Model Serving endpoint is queryable.",
             )
-        except Exception:  # noqa: BLE001
+        except Exception:
             log.exception("HermesRuntime bootstrap failed; degraded mode")
 
     async def _start_telegram(self) -> None:
@@ -179,7 +179,7 @@ class HermesSupervisor:
 
         self.telegram = client
 
-        async def _on_message(chat_id: int, username: Optional[str], text: str) -> Optional[str]:
+        async def _on_message(chat_id: int, username: str | None, text: str) -> str | None:
             session_id = f"telegram:{chat_id}"
             await self._record_event(
                 "telegram_update",
@@ -197,7 +197,7 @@ class HermesSupervisor:
                     session_id=session_id,
                     metadata={"telegram_chat_id": chat_id, "telegram_user": username},
                 )
-            except Exception as exc:  # noqa: BLE001
+            except Exception as exc:
                 log.exception("run_turn failed for telegram message")
                 await self._record_event(
                     "telegram_run_error",
@@ -247,26 +247,32 @@ class HermesSupervisor:
                 # Refresh Databricks bearer token if due.
                 try:
                     import time as _t
+
                     now = _t.time()
-                    if now - last_token_refresh >= token_refresh_interval:
-                        if (
-                            self.runtime is not None
-                            and getattr(self.runtime, "provider", None) is not None
-                            and getattr(self.runtime, "agent", None) is not None
-                        ):
-                            refreshed = await asyncio.to_thread(
-                                self.runtime.provider.refresh_agent_token,
-                                self.runtime.agent,
-                            )
-                            if refreshed:
-                                last_token_refresh = now
-                                log.debug("Databricks bearer token refreshed via heartbeat")
+                    if now - last_token_refresh >= token_refresh_interval and (
+                        self.runtime is not None
+                        and getattr(self.runtime, "provider", None) is not None
+                        and getattr(self.runtime, "agent", None) is not None
+                    ):
+                        refreshed = await asyncio.to_thread(
+                            self.runtime.provider.refresh_agent_token,
+                            self.runtime.agent,
+                        )
+                        if refreshed:
+                            last_token_refresh = now
+                            log.debug("Databricks bearer token refreshed via heartbeat")
                 except Exception:
                     log.exception("Bearer-token refresh failed")
-                if self.runtime is not None and getattr(self.runtime, "session_db", None) is not None:
+                if (
+                    self.runtime is not None
+                    and getattr(self.runtime, "session_db", None) is not None
+                ):
                     try:
-                        await asyncio.to_thread(self.runtime.session_db.append_event,  # type: ignore[attr-defined]
-                                                "heartbeat", {"agent": self.cfg.agent_name})
+                        await asyncio.to_thread(
+                            self.runtime.session_db.append_event,  # type: ignore[attr-defined]
+                            "heartbeat",
+                            {"agent": self.cfg.agent_name},
+                        )
                     except Exception:
                         log.exception("heartbeat event persist failed")
 
@@ -274,6 +280,7 @@ class HermesSupervisor:
 
         # Cron tick (Phase 8)
         if self.runtime is not None and getattr(self.runtime, "cron_available", False):
+
             async def _cron_tick() -> None:
                 while True:
                     try:

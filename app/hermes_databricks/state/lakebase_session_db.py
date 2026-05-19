@@ -47,21 +47,20 @@ from __future__ import annotations
 import json
 import logging
 import re
-import time
 import uuid
+from collections.abc import Iterable
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Optional, Tuple
+from typing import Any
 
 from hermes_databricks.config import Config
 from hermes_databricks.lakebase import Lakebase
-
 
 log = logging.getLogger("hermes_databricks.state.lakebase_session_db")
 
 SCHEMA_FILE = Path(__file__).parent / "schema.sql"
 
 
-def _to_json(value: Any) -> Optional[str]:
+def _to_json(value: Any) -> str | None:
     """Serialise a Python value to a JSON string for JSONB columns.
 
     None → None (NULL). Already-string values are passed through if
@@ -97,32 +96,68 @@ def _parse_json(value: Any) -> Any:
 
 # Whitelist of session row columns we read/write.
 _SESSION_COLS = (
-    "id", "source", "user_id", "model", "model_config", "system_prompt",
-    "parent_session_id", "started_at", "ended_at", "end_reason",
-    "message_count", "tool_call_count", "input_tokens", "output_tokens",
-    "cache_read_tokens", "cache_write_tokens", "reasoning_tokens",
-    "billing_provider", "billing_base_url", "billing_mode",
-    "estimated_cost_usd", "actual_cost_usd", "cost_status", "cost_source",
-    "pricing_version", "title", "api_call_count",
-    "handoff_state", "handoff_platform", "handoff_error",
+    "id",
+    "source",
+    "user_id",
+    "model",
+    "model_config",
+    "system_prompt",
+    "parent_session_id",
+    "started_at",
+    "ended_at",
+    "end_reason",
+    "message_count",
+    "tool_call_count",
+    "input_tokens",
+    "output_tokens",
+    "cache_read_tokens",
+    "cache_write_tokens",
+    "reasoning_tokens",
+    "billing_provider",
+    "billing_base_url",
+    "billing_mode",
+    "estimated_cost_usd",
+    "actual_cost_usd",
+    "cost_status",
+    "cost_source",
+    "pricing_version",
+    "title",
+    "api_call_count",
+    "handoff_state",
+    "handoff_platform",
+    "handoff_error",
 )
 
 _MESSAGE_COLS = (
-    "id", "session_id", "role", "content", "tool_call_id", "tool_calls",
-    "tool_name", "timestamp", "token_count", "finish_reason",
-    "reasoning", "reasoning_content", "reasoning_details",
-    "codex_reasoning_items", "codex_message_items",
+    "id",
+    "session_id",
+    "role",
+    "content",
+    "tool_call_id",
+    "tool_calls",
+    "tool_name",
+    "timestamp",
+    "token_count",
+    "finish_reason",
+    "reasoning",
+    "reasoning_content",
+    "reasoning_details",
+    "codex_reasoning_items",
+    "codex_message_items",
 )
 
 
-def _row_to_dict(cols: Iterable[str], row: Optional[tuple]) -> Optional[Dict[str, Any]]:
+def _row_to_dict(cols: Iterable[str], row: tuple | None) -> dict[str, Any] | None:
     if row is None:
         return None
-    out: Dict[str, Any] = {}
-    for c, v in zip(cols, row):
+    out: dict[str, Any] = {}
+    for c, v in zip(cols, row, strict=False):
         if c in {
-            "model_config", "tool_calls", "reasoning_details",
-            "codex_reasoning_items", "codex_message_items",
+            "model_config",
+            "tool_calls",
+            "reasoning_details",
+            "codex_reasoning_items",
+            "codex_message_items",
             "handoff_state",
         }:
             out[c] = _parse_json(v)
@@ -149,7 +184,7 @@ class LakebaseSessionDB:
     # ------------------------------------------------------------------
 
     @classmethod
-    def from_config(cls, cfg: Config, *, lakebase: Optional[Lakebase] = None) -> "LakebaseSessionDB":
+    def from_config(cls, cfg: Config, *, lakebase: Lakebase | None = None) -> LakebaseSessionDB:
         lakebase = lakebase or Lakebase.from_config(cfg)
         return cls(lakebase=lakebase, schema=cfg.lakebase_schema)
 
@@ -171,9 +206,7 @@ class LakebaseSessionDB:
         sql_text = SCHEMA_FILE.read_text()
         sql_text = sql_text.replace("hermes_session", self.schema)
         statements = [
-            s.strip()
-            for s in sql_text.split(";")
-            if s.strip() and not s.strip().startswith("--")
+            s.strip() for s in sql_text.split(";") if s.strip() and not s.strip().startswith("--")
         ]
 
         skipped = 0
@@ -186,12 +219,14 @@ class LakebaseSessionDB:
                 except Exception as exc:
                     msg = str(exc).lower()
                     upper = stmt.upper()
-                    is_create = (
-                        upper.startswith("CREATE EXTENSION")
-                        or upper.startswith("CREATE SCHEMA")
-                        or upper.startswith("CREATE TABLE")
-                        or upper.startswith("CREATE INDEX")
-                        or upper.startswith("CREATE SEQUENCE")
+                    is_create = upper.startswith(
+                        (
+                            "CREATE EXTENSION",
+                            "CREATE SCHEMA",
+                            "CREATE TABLE",
+                            "CREATE INDEX",
+                            "CREATE SEQUENCE",
+                        )
                     )
                     tolerable = (
                         "permission denied" in msg
@@ -218,7 +253,9 @@ class LakebaseSessionDB:
         self._search_path_set = True
         log.info(
             "Lakebase schema '%s' ensured (applied=%d, skipped=%d)",
-            self.schema, applied, skipped,
+            self.schema,
+            applied,
+            skipped,
         )
 
     def _ensure_search_path(self, cur) -> None:
@@ -235,15 +272,15 @@ class LakebaseSessionDB:
         session_id: str,
         source: str,
         *,
-        user_id: Optional[str] = None,
-        model: Optional[str] = None,
+        user_id: str | None = None,
+        model: str | None = None,
         model_config: Any = None,
-        system_prompt: Optional[str] = None,
-        parent_session_id: Optional[str] = None,
-        billing_provider: Optional[str] = None,
-        billing_base_url: Optional[str] = None,
-        billing_mode: Optional[str] = None,
-        title: Optional[str] = None,
+        system_prompt: str | None = None,
+        parent_session_id: str | None = None,
+        billing_provider: str | None = None,
+        billing_base_url: str | None = None,
+        billing_mode: str | None = None,
+        title: str | None = None,
         **_ignored,
     ) -> str:
         title = self.sanitize_title(title) if title else None
@@ -266,20 +303,30 @@ class LakebaseSessionDB:
                     title = COALESCE(EXCLUDED.title, sessions.title)
                 """,
                 (
-                    session_id, source, user_id, model, _to_json(model_config),
-                    system_prompt, parent_session_id, billing_provider,
-                    billing_base_url, billing_mode, title,
+                    session_id,
+                    source,
+                    user_id,
+                    model,
+                    _to_json(model_config),
+                    system_prompt,
+                    parent_session_id,
+                    billing_provider,
+                    billing_base_url,
+                    billing_mode,
+                    title,
                 ),
             )
         return session_id
 
-    def ensure_session(self, session_id: str, source: str = "unknown", model: Optional[str] = None, **kwargs) -> str:
+    def ensure_session(
+        self, session_id: str, source: str = "unknown", model: str | None = None, **kwargs
+    ) -> str:
         existing = self.get_session(session_id)
         if existing is not None:
             return session_id
         return self.create_session(session_id, source, model=model, **kwargs)
 
-    def end_session(self, session_id: str, end_reason: Optional[str] = None) -> None:
+    def end_session(self, session_id: str, end_reason: str | None = None) -> None:
         with self.lakebase.cursor() as cur:
             self._ensure_search_path(cur)
             cur.execute(
@@ -309,18 +356,18 @@ class LakebaseSessionDB:
         *,
         input_tokens: int = 0,
         output_tokens: int = 0,
-        model: Optional[str] = None,
+        model: str | None = None,
         cache_read_tokens: int = 0,
         cache_write_tokens: int = 0,
         reasoning_tokens: int = 0,
-        estimated_cost_usd: Optional[float] = None,
-        actual_cost_usd: Optional[float] = None,
-        cost_status: Optional[str] = None,
-        cost_source: Optional[str] = None,
-        pricing_version: Optional[str] = None,
-        billing_provider: Optional[str] = None,
-        billing_base_url: Optional[str] = None,
-        billing_mode: Optional[str] = None,
+        estimated_cost_usd: float | None = None,
+        actual_cost_usd: float | None = None,
+        cost_status: str | None = None,
+        cost_source: str | None = None,
+        pricing_version: str | None = None,
+        billing_provider: str | None = None,
+        billing_base_url: str | None = None,
+        billing_mode: str | None = None,
         api_call_count: int = 0,
         absolute: bool = False,
     ) -> None:
@@ -334,9 +381,13 @@ class LakebaseSessionDB:
                 "reasoning_tokens = %s",
                 "api_call_count = %s",
             ]
-            params: List[Any] = [
-                input_tokens, output_tokens, cache_read_tokens,
-                cache_write_tokens, reasoning_tokens, api_call_count,
+            params: list[Any] = [
+                input_tokens,
+                output_tokens,
+                cache_read_tokens,
+                cache_write_tokens,
+                reasoning_tokens,
+                api_call_count,
             ]
         else:
             sets = [
@@ -348,8 +399,12 @@ class LakebaseSessionDB:
                 "api_call_count = COALESCE(api_call_count,0) + %s",
             ]
             params = [
-                input_tokens, output_tokens, cache_read_tokens,
-                cache_write_tokens, reasoning_tokens, api_call_count,
+                input_tokens,
+                output_tokens,
+                cache_read_tokens,
+                cache_write_tokens,
+                reasoning_tokens,
+                api_call_count,
             ]
 
         if model is not None:
@@ -400,16 +455,24 @@ class LakebaseSessionDB:
                     ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb)
                     """,
                     (
-                        session_id, billing_provider or "databricks", model,
-                        input_tokens, output_tokens,
+                        session_id,
+                        billing_provider or "databricks",
+                        model,
+                        input_tokens,
+                        output_tokens,
                         (input_tokens or 0) + (output_tokens or 0),
-                        cache_read_tokens, cache_write_tokens, reasoning_tokens,
-                        estimated_cost_usd, _to_json({
-                            "absolute": absolute,
-                            "api_call_count": api_call_count,
-                            "cost_status": cost_status,
-                            "cost_source": cost_source,
-                        }),
+                        cache_read_tokens,
+                        cache_write_tokens,
+                        reasoning_tokens,
+                        estimated_cost_usd,
+                        _to_json(
+                            {
+                                "absolute": absolute,
+                                "api_call_count": api_call_count,
+                                "cost_status": cost_status,
+                                "cost_source": cost_source,
+                            }
+                        ),
                     ),
                 )
         except Exception:
@@ -419,7 +482,7 @@ class LakebaseSessionDB:
     # Session lookups
     # ------------------------------------------------------------------
 
-    def get_session(self, session_id: str) -> Optional[Dict[str, Any]]:
+    def get_session(self, session_id: str) -> dict[str, Any] | None:
         with self.lakebase.cursor() as cur:
             self._ensure_search_path(cur)
             cur.execute(
@@ -429,7 +492,7 @@ class LakebaseSessionDB:
             row = cur.fetchone()
         return _row_to_dict(_SESSION_COLS, row)
 
-    def resolve_session_id(self, session_id_or_prefix: str) -> Optional[str]:
+    def resolve_session_id(self, session_id_or_prefix: str) -> str | None:
         if not session_id_or_prefix:
             return None
         full = self.get_session(session_id_or_prefix)
@@ -457,7 +520,7 @@ class LakebaseSessionDB:
     # ------------------------------------------------------------------
 
     @staticmethod
-    def sanitize_title(title: Optional[str]) -> Optional[str]:
+    def sanitize_title(title: str | None) -> str | None:
         if title is None:
             return None
         # Mirror the SQLite SessionDB behaviour: strip control chars, cap length.
@@ -466,7 +529,7 @@ class LakebaseSessionDB:
             return None
         return cleaned[:200]
 
-    def set_session_title(self, session_id: str, title: Optional[str]) -> bool:
+    def set_session_title(self, session_id: str, title: str | None) -> bool:
         clean = self.sanitize_title(title)
         with self.lakebase.cursor() as cur:
             self._ensure_search_path(cur)
@@ -476,14 +539,14 @@ class LakebaseSessionDB:
             )
             return cur.rowcount > 0
 
-    def get_session_title(self, session_id: str) -> Optional[str]:
+    def get_session_title(self, session_id: str) -> str | None:
         with self.lakebase.cursor() as cur:
             self._ensure_search_path(cur)
             cur.execute("SELECT title FROM sessions WHERE id = %s", (session_id,))
             row = cur.fetchone()
         return row[0] if row else None
 
-    def get_session_by_title(self, title: str) -> Optional[Dict[str, Any]]:
+    def get_session_by_title(self, title: str) -> dict[str, Any] | None:
         with self.lakebase.cursor() as cur:
             self._ensure_search_path(cur)
             cur.execute(
@@ -494,7 +557,7 @@ class LakebaseSessionDB:
             row = cur.fetchone()
         return _row_to_dict(_SESSION_COLS, row)
 
-    def resolve_session_by_title(self, title: str) -> Optional[str]:
+    def resolve_session_by_title(self, title: str) -> str | None:
         row = self.get_session_by_title(title)
         return row["id"] if row else None
 
@@ -515,7 +578,7 @@ class LakebaseSessionDB:
             return re.sub(r"\s+\d+$", f" {n}", row[0])
         return f"{base_title} 2"
 
-    def get_compression_tip(self, session_id: str) -> Optional[str]:
+    def get_compression_tip(self, session_id: str) -> str | None:
         # Compression lineage is not yet ported. Returning None matches
         # the SQLite path when no compression has happened.
         return None
@@ -529,14 +592,14 @@ class LakebaseSessionDB:
         session_id: str,
         role: str,
         *,
-        content: Optional[str] = None,
-        tool_name: Optional[str] = None,
+        content: str | None = None,
+        tool_name: str | None = None,
         tool_calls: Any = None,
-        tool_call_id: Optional[str] = None,
-        token_count: Optional[int] = None,
-        finish_reason: Optional[str] = None,
-        reasoning: Optional[str] = None,
-        reasoning_content: Optional[str] = None,
+        tool_call_id: str | None = None,
+        token_count: int | None = None,
+        finish_reason: str | None = None,
+        reasoning: str | None = None,
+        reasoning_content: str | None = None,
         reasoning_details: Any = None,
         codex_reasoning_items: Any = None,
         codex_message_items: Any = None,
@@ -554,8 +617,16 @@ class LakebaseSessionDB:
                 ) RETURNING id
                 """,
                 (
-                    session_id, role, content, tool_call_id, _to_json(tool_calls), tool_name,
-                    token_count, finish_reason, reasoning, reasoning_content,
+                    session_id,
+                    role,
+                    content,
+                    tool_call_id,
+                    _to_json(tool_calls),
+                    tool_name,
+                    token_count,
+                    finish_reason,
+                    reasoning,
+                    reasoning_content,
                     _to_json(reasoning_details),
                     _to_json(codex_reasoning_items),
                     _to_json(codex_message_items),
@@ -575,11 +646,14 @@ class LakebaseSessionDB:
                 )
         return msg_id
 
-    def replace_messages(self, session_id: str, messages: List[Dict[str, Any]]) -> None:
+    def replace_messages(self, session_id: str, messages: list[dict[str, Any]]) -> None:
         with self.lakebase.cursor() as cur:
             self._ensure_search_path(cur)
             cur.execute("DELETE FROM messages WHERE session_id = %s", (session_id,))
-            cur.execute("UPDATE sessions SET message_count = 0, tool_call_count = 0 WHERE id = %s", (session_id,))
+            cur.execute(
+                "UPDATE sessions SET message_count = 0, tool_call_count = 0 WHERE id = %s",
+                (session_id,),
+            )
         for msg in messages:
             self.append_message(
                 session_id,
@@ -597,7 +671,7 @@ class LakebaseSessionDB:
                 codex_message_items=msg.get("codex_message_items"),
             )
 
-    def get_messages(self, session_id: str) -> List[Dict[str, Any]]:
+    def get_messages(self, session_id: str) -> list[dict[str, Any]]:
         with self.lakebase.cursor() as cur:
             self._ensure_search_path(cur)
             cur.execute(
@@ -608,7 +682,9 @@ class LakebaseSessionDB:
             rows = cur.fetchall()
         return [d for d in (_row_to_dict(_MESSAGE_COLS, r) for r in rows) if d is not None]
 
-    def get_messages_around(self, session_id: str, anchor_msg_id: int, before: int = 5, after: int = 5) -> List[Dict[str, Any]]:
+    def get_messages_around(
+        self, session_id: str, anchor_msg_id: int, before: int = 5, after: int = 5
+    ) -> list[dict[str, Any]]:
         with self.lakebase.cursor() as cur:
             self._ensure_search_path(cur)
             cur.execute(
@@ -623,18 +699,20 @@ class LakebaseSessionDB:
         msgs.sort(key=lambda m: m["id"])
         return msgs
 
-    def get_anchored_view(self, session_id: str, anchor_msg_id: int, before: int = 10, after: int = 10) -> Dict[str, Any]:
+    def get_anchored_view(
+        self, session_id: str, anchor_msg_id: int, before: int = 10, after: int = 10
+    ) -> dict[str, Any]:
         return {
             "session_id": session_id,
             "anchor": anchor_msg_id,
             "messages": self.get_messages_around(session_id, anchor_msg_id, before, after),
         }
 
-    def get_messages_as_conversation(self, session_id: str) -> List[Dict[str, Any]]:
+    def get_messages_as_conversation(self, session_id: str) -> list[dict[str, Any]]:
         """Return messages in the OpenAI chat format (role + content + tool_*)."""
-        out: List[Dict[str, Any]] = []
+        out: list[dict[str, Any]] = []
         for m in self.get_messages(session_id):
-            entry: Dict[str, Any] = {"role": m["role"]}
+            entry: dict[str, Any] = {"role": m["role"]}
             if m.get("content") is not None:
                 entry["content"] = m["content"]
             if m.get("tool_calls"):
@@ -650,7 +728,10 @@ class LakebaseSessionDB:
         with self.lakebase.cursor() as cur:
             self._ensure_search_path(cur)
             cur.execute("DELETE FROM messages WHERE session_id = %s", (session_id,))
-            cur.execute("UPDATE sessions SET message_count = 0, tool_call_count = 0 WHERE id = %s", (session_id,))
+            cur.execute(
+                "UPDATE sessions SET message_count = 0, tool_call_count = 0 WHERE id = %s",
+                (session_id,),
+            )
 
     # ------------------------------------------------------------------
     # Listing / aggregates
@@ -658,17 +739,17 @@ class LakebaseSessionDB:
 
     def list_sessions_rich(
         self,
-        source: Optional[str] = None,
-        exclude_sources: Optional[Iterable[str]] = None,
+        source: str | None = None,
+        exclude_sources: Iterable[str] | None = None,
         limit: int = 20,
         offset: int = 0,
         *,
         include_children: bool = False,
         project_compression_tips: bool = True,
         order_by_last_active: bool = False,
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         where = []
-        params: List[Any] = []
+        params: list[Any] = []
         if source:
             where.append("source = %s")
             params.append(source)
@@ -679,9 +760,7 @@ class LakebaseSessionDB:
 
         order = "started_at DESC"
         if order_by_last_active:
-            order = (
-                "(SELECT MAX(timestamp) FROM messages m WHERE m.session_id = sessions.id) DESC NULLS LAST"
-            )
+            order = "(SELECT MAX(timestamp) FROM messages m WHERE m.session_id = sessions.id) DESC NULLS LAST"
 
         sql = f"SELECT {', '.join(_SESSION_COLS)} FROM sessions"
         if where:
@@ -700,7 +779,7 @@ class LakebaseSessionDB:
                 row["compression_tip"] = None  # not implemented
         return out
 
-    def session_count(self, source: Optional[str] = None) -> int:
+    def session_count(self, source: str | None = None) -> int:
         with self.lakebase.cursor() as cur:
             self._ensure_search_path(cur)
             if source:
@@ -710,7 +789,7 @@ class LakebaseSessionDB:
             row = cur.fetchone()
         return int(row[0]) if row else 0
 
-    def message_count(self, session_id: Optional[str] = None) -> int:
+    def message_count(self, session_id: str | None = None) -> int:
         with self.lakebase.cursor() as cur:
             self._ensure_search_path(cur)
             if session_id:
@@ -728,18 +807,18 @@ class LakebaseSessionDB:
         self,
         query: str,
         *,
-        source_filter: Optional[str] = None,
-        exclude_sources: Optional[Iterable[str]] = None,
-        role_filter: Optional[str] = None,
+        source_filter: str | None = None,
+        exclude_sources: Iterable[str] | None = None,
+        role_filter: str | None = None,
         limit: int = 20,
         offset: int = 0,
-        sort: Optional[str] = None,
-    ) -> List[Dict[str, Any]]:
+        sort: str | None = None,
+    ) -> list[dict[str, Any]]:
         if not query:
             return []
         like = f"%{query}%"
         where = ["m.content ILIKE %s"]
-        params: List[Any] = [like]
+        params: list[Any] = [like]
         if role_filter:
             where.append("m.role = %s")
             params.append(role_filter)
@@ -768,16 +847,16 @@ class LakebaseSessionDB:
             cur.execute(sql, tuple(params))
             rows = cur.fetchall()
 
-        out: List[Dict[str, Any]] = []
+        out: list[dict[str, Any]] = []
         for row in rows:
-            d = _row_to_dict(_MESSAGE_COLS, row[:len(_MESSAGE_COLS)])
+            d = _row_to_dict(_MESSAGE_COLS, row[: len(_MESSAGE_COLS)])
             if d is None:
                 continue
             d["session_source"] = row[-1]
             out.append(d)
         return out
 
-    def search_sessions(self, query: str, **kwargs) -> List[Dict[str, Any]]:
+    def search_sessions(self, query: str, **kwargs) -> list[dict[str, Any]]:
         if not query:
             return []
         like = f"%{query}%"
@@ -796,17 +875,19 @@ class LakebaseSessionDB:
     # Export / delete / prune
     # ------------------------------------------------------------------
 
-    def export_session(self, session_id: str) -> Optional[Dict[str, Any]]:
+    def export_session(self, session_id: str) -> dict[str, Any] | None:
         session = self.get_session(session_id)
         if session is None:
             return None
         return {"session": session, "messages": self.get_messages(session_id)}
 
-    def export_all(self, source: Optional[str] = None) -> List[Dict[str, Any]]:
-        sessions = self.list_sessions_rich(source=source, limit=10_000, project_compression_tips=False)
+    def export_all(self, source: str | None = None) -> list[dict[str, Any]]:
+        sessions = self.list_sessions_rich(
+            source=source, limit=10_000, project_compression_tips=False
+        )
         return [self.export_session(s["id"]) for s in sessions if s is not None]
 
-    def delete_session(self, session_id: str, sessions_dir: Optional[Path] = None) -> None:
+    def delete_session(self, session_id: str, sessions_dir: Path | None = None) -> None:
         with self.lakebase.cursor() as cur:
             self._ensure_search_path(cur)
             cur.execute("DELETE FROM sessions WHERE id = %s", (session_id,))
@@ -815,13 +896,13 @@ class LakebaseSessionDB:
         self,
         max_age_days: int,
         max_count: int,
-        source: Optional[str] = None,
-        sessions_dir: Optional[Path] = None,
+        source: str | None = None,
+        sessions_dir: Path | None = None,
     ) -> int:
         deleted = 0
         with self.lakebase.cursor() as cur:
             self._ensure_search_path(cur)
-            params: List[Any] = []
+            params: list[Any] = []
             where = []
             if source:
                 where.append("source = %s")
@@ -844,7 +925,7 @@ class LakebaseSessionDB:
                 deleted += cur.rowcount or 0
         return deleted
 
-    def prune_empty_ghost_sessions(self, sessions_dir: Optional[Path] = None) -> int:
+    def prune_empty_ghost_sessions(self, sessions_dir: Path | None = None) -> int:
         with self.lakebase.cursor() as cur:
             self._ensure_search_path(cur)
             cur.execute(
@@ -860,7 +941,7 @@ class LakebaseSessionDB:
     # KV / meta
     # ------------------------------------------------------------------
 
-    def get_meta(self, key: str) -> Optional[Any]:
+    def get_meta(self, key: str) -> Any | None:
         with self.lakebase.cursor() as cur:
             self._ensure_search_path(cur)
             cur.execute("SELECT value FROM kv_state WHERE key = %s", (key,))
@@ -903,7 +984,7 @@ class LakebaseSessionDB:
     def is_telegram_topic_mode_enabled(self, *_args, **_kwargs) -> bool:
         return False
 
-    def get_telegram_topic_binding(self, *_args, **_kwargs) -> Optional[Dict[str, Any]]:
+    def get_telegram_topic_binding(self, *_args, **_kwargs) -> dict[str, Any] | None:
         return None
 
     def bind_telegram_topic(self, *_args, **_kwargs) -> bool:
@@ -912,16 +993,16 @@ class LakebaseSessionDB:
     def is_telegram_session_linked_to_topic(self, *_args, **_kwargs) -> bool:
         return False
 
-    def list_unlinked_telegram_sessions_for_user(self, *_args, **_kwargs) -> List[Dict[str, Any]]:
+    def list_unlinked_telegram_sessions_for_user(self, *_args, **_kwargs) -> list[dict[str, Any]]:
         return []
 
     def request_handoff(self, *_args, **_kwargs) -> bool:
         return False
 
-    def get_handoff_state(self, *_args, **_kwargs) -> Optional[Dict[str, Any]]:
+    def get_handoff_state(self, *_args, **_kwargs) -> dict[str, Any] | None:
         return None
 
-    def list_pending_handoffs(self, *_args, **_kwargs) -> List[Dict[str, Any]]:
+    def list_pending_handoffs(self, *_args, **_kwargs) -> list[dict[str, Any]]:
         return []
 
     def claim_handoff(self, *_args, **_kwargs) -> bool:
@@ -942,9 +1023,9 @@ class LakebaseSessionDB:
         kind: str,
         payload: Any,
         *,
-        channel: Optional[str] = None,
-        session_id: Optional[str] = None,
-        thread_id: Optional[str] = None,
+        channel: str | None = None,
+        session_id: str | None = None,
+        thread_id: str | None = None,
     ) -> str:
         event_id = uuid.uuid4().hex
         with self.lakebase.cursor() as cur:
@@ -958,7 +1039,7 @@ class LakebaseSessionDB:
             )
         return event_id
 
-    def recent_events(self, limit: int = 50, kind: Optional[str] = None) -> List[Dict[str, Any]]:
+    def recent_events(self, limit: int = 50, kind: str | None = None) -> list[dict[str, Any]]:
         with self.lakebase.cursor() as cur:
             self._ensure_search_path(cur)
             if kind:
@@ -974,20 +1055,22 @@ class LakebaseSessionDB:
                     (limit,),
                 )
             rows = cur.fetchall()
-        out: List[Dict[str, Any]] = []
+        out: list[dict[str, Any]] = []
         for r in rows:
-            out.append({
-                "id": r[0],
-                "ts": r[1].isoformat() if hasattr(r[1], "isoformat") else r[1],
-                "kind": r[2],
-                "channel": r[3],
-                "session_id": r[4],
-                "thread_id": r[5],
-                "payload": _parse_json(r[6]),
-            })
+            out.append(
+                {
+                    "id": r[0],
+                    "ts": r[1].isoformat() if hasattr(r[1], "isoformat") else r[1],
+                    "kind": r[2],
+                    "channel": r[3],
+                    "session_id": r[4],
+                    "thread_id": r[5],
+                    "payload": _parse_json(r[6]),
+                }
+            )
         return out
 
-    def recent_usage(self, limit: int = 50) -> List[Dict[str, Any]]:
+    def recent_usage(self, limit: int = 50) -> list[dict[str, Any]]:
         with self.lakebase.cursor() as cur:
             self._ensure_search_path(cur)
             cur.execute(
@@ -997,26 +1080,28 @@ class LakebaseSessionDB:
                 (limit,),
             )
             rows = cur.fetchall()
-        out: List[Dict[str, Any]] = []
+        out: list[dict[str, Any]] = []
         for r in rows:
-            out.append({
-                "id": r[0],
-                "ts": r[1].isoformat() if hasattr(r[1], "isoformat") else r[1],
-                "session_id": r[2],
-                "provider": r[3],
-                "model": r[4],
-                "prompt_tokens": r[5],
-                "completion_tokens": r[6],
-                "total_tokens": r[7],
-                "estimated_cost_usd": r[8],
-            })
+            out.append(
+                {
+                    "id": r[0],
+                    "ts": r[1].isoformat() if hasattr(r[1], "isoformat") else r[1],
+                    "session_id": r[2],
+                    "provider": r[3],
+                    "model": r[4],
+                    "prompt_tokens": r[5],
+                    "completion_tokens": r[6],
+                    "total_tokens": r[7],
+                    "estimated_cost_usd": r[8],
+                }
+            )
         return out
 
     # ------------------------------------------------------------------
     # Health
     # ------------------------------------------------------------------
 
-    async def health_probe(self) -> Dict[str, Any]:
+    async def health_probe(self) -> dict[str, Any]:
         return await self.lakebase.health_probe()
 
 

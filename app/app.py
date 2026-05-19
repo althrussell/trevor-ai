@@ -24,7 +24,7 @@ import os
 import sys
 import time
 from contextlib import asynccontextmanager
-from typing import Any, Dict, Optional
+from typing import Any
 
 from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.responses import JSONResponse
@@ -51,11 +51,11 @@ async def lifespan(app: FastAPI):
     app.state.started_at = time.time()
     app.state.runtime = None
     app.state.supervisor = None
-    app.state.errors: Dict[str, str] = {}
+    app.state.errors: dict[str, str] = {}
 
     try:
         from hermes_databricks.supervisor import HermesSupervisor
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         log.error("Supervisor import failed; serving in degraded mode", exc_info=True)
         app.state.errors["supervisor_import"] = f"{type(exc).__name__}: {exc}"
         try:
@@ -70,7 +70,7 @@ async def lifespan(app: FastAPI):
     try:
         await supervisor.start()
         app.state.runtime = supervisor.runtime
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         log.error("Supervisor.start() failed; serving in degraded mode", exc_info=True)
         app.state.errors["supervisor_start"] = f"{type(exc).__name__}: {exc}"
 
@@ -80,7 +80,7 @@ async def lifespan(app: FastAPI):
         if app.state.supervisor is not None:
             try:
                 await app.state.supervisor.stop()
-            except Exception:  # noqa: BLE001
+            except Exception:
                 log.exception("Supervisor.stop() raised")
 
 
@@ -97,7 +97,7 @@ app = FastAPI(
 
 
 @app.get("/")
-async def root(request: Request) -> Dict[str, Any]:
+async def root(request: Request) -> dict[str, Any]:
     cfg = request.app.state.config
     return {
         "app": "hermes-on-databricks",
@@ -113,7 +113,7 @@ async def root(request: Request) -> Dict[str, Any]:
 
 
 @app.get("/health")
-async def health(request: Request) -> Dict[str, Any]:
+async def health(request: Request) -> dict[str, Any]:
     return await request.app.state.health.liveness()
 
 
@@ -125,7 +125,7 @@ async def ready(request: Request) -> JSONResponse:
 
 
 @app.get("/config")
-async def config_endpoint(request: Request) -> Dict[str, Any]:
+async def config_endpoint(request: Request) -> dict[str, Any]:
     cfg = request.app.state.config
     return {
         "agent_name": cfg.agent_name,
@@ -162,11 +162,13 @@ def _supervisor_or_none(request: Request):
 
 
 @app.get("/debug/runtime")
-async def debug_runtime(request: Request) -> Dict[str, Any]:
+async def debug_runtime(request: Request) -> dict[str, Any]:
     runtime = _runtime_or_none(request)
-    info: Dict[str, Any] = {
+    info: dict[str, Any] = {
         "started_at": getattr(request.app.state, "started_at", None),
-        "uptime_seconds": round(time.time() - getattr(request.app.state, "started_at", time.time()), 2),
+        "uptime_seconds": round(
+            time.time() - getattr(request.app.state, "started_at", time.time()), 2
+        ),
         "errors": getattr(request.app.state, "errors", {}),
         "python_version": sys.version,
         "pid": os.getpid(),
@@ -179,7 +181,7 @@ async def debug_runtime(request: Request) -> Dict[str, Any]:
 
 
 @app.get("/hermes/status")
-async def hermes_status(request: Request) -> Dict[str, Any]:
+async def hermes_status(request: Request) -> dict[str, Any]:
     runtime = _runtime_or_none(request)
     if runtime is None:
         raise HTTPException(status_code=503, detail="Hermes runtime not initialized")
@@ -187,7 +189,7 @@ async def hermes_status(request: Request) -> Dict[str, Any]:
 
 
 @app.post("/debug/model-turn")
-async def debug_model_turn(payload: Dict[str, Any], request: Request) -> Dict[str, Any]:
+async def debug_model_turn(payload: dict[str, Any], request: Request) -> dict[str, Any]:
     runtime = _runtime_or_none(request)
     if runtime is None:
         raise HTTPException(status_code=503, detail="Hermes runtime not initialized")
@@ -203,14 +205,14 @@ async def debug_model_turn(payload: Dict[str, Any], request: Request) -> Dict[st
             session_id=session_id,
             system_message=system,
         )
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         log.exception("model turn failed")
         raise HTTPException(status_code=500, detail=f"{type(exc).__name__}: {exc}") from exc
     return result
 
 
 @app.get("/debug/sessions")
-async def debug_sessions(request: Request, limit: int = Query(20, ge=1, le=200)) -> Dict[str, Any]:
+async def debug_sessions(request: Request, limit: int = Query(20, ge=1, le=200)) -> dict[str, Any]:
     runtime = _runtime_or_none(request)
     if runtime is None or runtime.session_db is None:
         raise HTTPException(status_code=503, detail="Session DB not initialized")
@@ -219,7 +221,7 @@ async def debug_sessions(request: Request, limit: int = Query(20, ge=1, le=200))
 
 
 @app.get("/debug/session/{session_id}")
-async def debug_session(session_id: str, request: Request) -> Dict[str, Any]:
+async def debug_session(session_id: str, request: Request) -> dict[str, Any]:
     runtime = _runtime_or_none(request)
     if runtime is None or runtime.session_db is None:
         raise HTTPException(status_code=503, detail="Session DB not initialized")
@@ -231,7 +233,7 @@ async def debug_session(session_id: str, request: Request) -> Dict[str, Any]:
 
 
 @app.get("/debug/tools")
-async def debug_tools(request: Request) -> Dict[str, Any]:
+async def debug_tools(request: Request) -> dict[str, Any]:
     runtime = _runtime_or_none(request)
     if runtime is None:
         raise HTTPException(status_code=503, detail="Hermes runtime not initialized")
@@ -242,8 +244,10 @@ async def debug_tools(request: Request) -> Dict[str, Any]:
 async def debug_events(
     request: Request,
     limit: int = Query(50, ge=1, le=500),
-    kind: Optional[str] = Query(None, description="Filter by event kind (e.g. cron_tick, telegram_update)."),
-) -> Dict[str, Any]:
+    kind: str | None = Query(
+        None, description="Filter by event kind (e.g. cron_tick, telegram_update)."
+    ),
+) -> dict[str, Any]:
     runtime = _runtime_or_none(request)
     if runtime is None or runtime.session_db is None:
         raise HTTPException(status_code=503, detail="Session DB not initialized")
@@ -252,7 +256,7 @@ async def debug_events(
 
 
 @app.get("/debug/usage")
-async def debug_usage(request: Request, limit: int = Query(50, ge=1, le=500)) -> Dict[str, Any]:
+async def debug_usage(request: Request, limit: int = Query(50, ge=1, le=500)) -> dict[str, Any]:
     runtime = _runtime_or_none(request)
     if runtime is None or runtime.session_db is None:
         raise HTTPException(status_code=503, detail="Session DB not initialized")
@@ -261,7 +265,7 @@ async def debug_usage(request: Request, limit: int = Query(50, ge=1, le=500)) ->
 
 
 @app.get("/debug/fs")
-async def debug_fs(request: Request) -> Dict[str, Any]:
+async def debug_fs(request: Request) -> dict[str, Any]:
     runtime = _runtime_or_none(request)
     if runtime is None or runtime.home_fs is None:
         raise HTTPException(status_code=503, detail="UC Volume FS not initialized")
@@ -269,7 +273,9 @@ async def debug_fs(request: Request) -> Dict[str, Any]:
 
 
 @app.get("/debug/fs/list")
-async def debug_fs_list(request: Request, path: str = Query("", description="Relative path under HERMES_HOME")) -> Dict[str, Any]:
+async def debug_fs_list(
+    request: Request, path: str = Query("", description="Relative path under HERMES_HOME")
+) -> dict[str, Any]:
     runtime = _runtime_or_none(request)
     if runtime is None or runtime.home_fs is None:
         raise HTTPException(status_code=503, detail="UC Volume FS not initialized")
@@ -278,7 +284,7 @@ async def debug_fs_list(request: Request, path: str = Query("", description="Rel
 
 
 @app.get("/debug/cron")
-async def debug_cron(request: Request) -> Dict[str, Any]:
+async def debug_cron(request: Request) -> dict[str, Any]:
     runtime = _runtime_or_none(request)
     if runtime is None:
         raise HTTPException(status_code=503, detail="Hermes runtime not initialized")
@@ -286,21 +292,21 @@ async def debug_cron(request: Request) -> Dict[str, Any]:
 
 
 @app.post("/debug/cron/run/{job_id}")
-async def debug_cron_run(job_id: str, request: Request) -> Dict[str, Any]:
+async def debug_cron_run(job_id: str, request: Request) -> dict[str, Any]:
     runtime = _runtime_or_none(request)
     if runtime is None:
         raise HTTPException(status_code=503, detail="Hermes runtime not initialized")
     try:
         return await asyncio.to_thread(runtime.run_cron_job, job_id)
     except KeyError:
-        raise HTTPException(status_code=404, detail=f"cron job {job_id} not found")
-    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=404, detail=f"cron job {job_id} not found") from None
+    except Exception as exc:
         log.exception("cron job run failed")
         raise HTTPException(status_code=500, detail=f"{type(exc).__name__}: {exc}") from exc
 
 
 @app.get("/debug/telegram")
-async def debug_telegram(request: Request) -> Dict[str, Any]:
+async def debug_telegram(request: Request) -> dict[str, Any]:
     supervisor = _supervisor_or_none(request)
     if supervisor is None or supervisor.telegram is None:
         return {"status": "disabled", "reason": "Telegram client not configured"}
@@ -308,22 +314,24 @@ async def debug_telegram(request: Request) -> Dict[str, Any]:
 
 
 @app.get("/debug/supervisor")
-async def debug_supervisor(request: Request) -> Dict[str, Any]:
+async def debug_supervisor(request: Request) -> dict[str, Any]:
     supervisor = _supervisor_or_none(request)
     if supervisor is None:
         return {"status": "not_initialized"}
     tasks = []
     for t in getattr(supervisor, "_tasks", []):
-        tasks.append({
-            "name": t.get_name(),
-            "done": t.done(),
-            "cancelled": t.cancelled(),
-            "exception": (
-                type(t.exception()).__name__
-                if t.done() and not t.cancelled() and t.exception() is not None
-                else None
-            ),
-        })
+        tasks.append(
+            {
+                "name": t.get_name(),
+                "done": t.done(),
+                "cancelled": t.cancelled(),
+                "exception": (
+                    type(t.exception()).__name__
+                    if t.done() and not t.cancelled() and t.exception() is not None
+                    else None
+                ),
+            }
+        )
     return {
         "stopped": getattr(supervisor, "_stopped", False),
         "runtime_loaded": getattr(supervisor, "runtime", None) is not None,
@@ -333,16 +341,18 @@ async def debug_supervisor(request: Request) -> Dict[str, Any]:
 
 
 @app.get("/debug/health-checks")
-async def debug_health_checks(request: Request) -> Dict[str, Any]:
+async def debug_health_checks(request: Request) -> dict[str, Any]:
     health = request.app.state.health
     out = []
     for name, check in health._checks.items():  # type: ignore[attr-defined]
-        out.append({
-            "name": name,
-            "description": check.description,
-            "last_status": check.last_status,
-            "last_detail": check.last_detail,
-            "last_ms": round(check.last_ms, 2),
-            "last_checked_at": check.last_checked_at,
-        })
+        out.append(
+            {
+                "name": name,
+                "description": check.description,
+                "last_status": check.last_status,
+                "last_detail": check.last_detail,
+                "last_ms": round(check.last_ms, 2),
+                "last_checked_at": check.last_checked_at,
+            }
+        )
     return {"count": len(out), "checks": out}

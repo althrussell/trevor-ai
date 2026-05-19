@@ -23,13 +23,12 @@ so the operator gets pointed at the right thing.
 
 from __future__ import annotations
 
-from typing import Any, Dict
-
+from typing import Any
 
 _BACKENDS = {"disabled", "in_app_playwright", "databricks_job_browser", "external_browser"}
 
 
-def describe(backend: str = "disabled") -> Dict[str, Any]:
+def describe(backend: str = "disabled") -> dict[str, Any]:
     backend = (backend or "disabled").strip()
     if backend not in _BACKENDS:
         return {
@@ -50,6 +49,7 @@ def describe(backend: str = "disabled") -> Dict[str, Any]:
     if backend == "in_app_playwright":
         try:
             import playwright  # noqa: F401  type: ignore
+
             return {
                 "backend": backend,
                 "available": True,
@@ -89,7 +89,7 @@ def describe(backend: str = "disabled") -> Dict[str, Any]:
     return {"backend": backend, "available": False, "reason": "unhandled backend"}
 
 
-def navigate(url: str, *, backend: str = "disabled") -> Dict[str, Any]:
+def navigate(url: str, *, backend: str = "disabled") -> dict[str, Any]:
     """Return the same status as ``describe(backend)`` plus the requested url.
 
     The browser tool itself stays inside Hermes — this function is only

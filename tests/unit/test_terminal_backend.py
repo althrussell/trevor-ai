@@ -61,7 +61,9 @@ def test_denylist_blocks_rm(home: Path) -> None:
 
 
 def test_timeout_short(home: Path) -> None:
-    result = tb.run([sys.executable, "-c", "import time; time.sleep(5)"], hermes_home=home, timeout=1)
+    result = tb.run(
+        [sys.executable, "-c", "import time; time.sleep(5)"], hermes_home=home, timeout=1
+    )
     assert result.ok is False
     assert "timeout" in result.note.lower()
 
@@ -79,6 +81,8 @@ def test_databricks_job_backend_returns_diagnostic(home: Path) -> None:
 
 
 def test_external_sandbox_backend_returns_diagnostic(home: Path) -> None:
-    result = tb.run([sys.executable, "-c", "print(1)"], backend="external_sandbox", hermes_home=home)
+    result = tb.run(
+        [sys.executable, "-c", "print(1)"], backend="external_sandbox", hermes_home=home
+    )
     assert result.ok is False
     assert "external_sandbox" in result.note

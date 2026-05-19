@@ -16,12 +16,29 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 
-
 _BANNED_LEADS = {
-    "INSERT", "UPDATE", "DELETE", "MERGE", "COPY", "CREATE", "ALTER",
-    "DROP", "TRUNCATE", "GRANT", "REVOKE", "USE", "SET", "REFRESH",
-    "VACUUM", "RESTORE", "ANALYZE", "OPTIMIZE", "REPLACE", "REASSIGN",
-    "MSCK", "EXPLAIN",  # EXPLAIN runs queries on some engines — be safe
+    "INSERT",
+    "UPDATE",
+    "DELETE",
+    "MERGE",
+    "COPY",
+    "CREATE",
+    "ALTER",
+    "DROP",
+    "TRUNCATE",
+    "GRANT",
+    "REVOKE",
+    "USE",
+    "SET",
+    "REFRESH",
+    "VACUUM",
+    "RESTORE",
+    "ANALYZE",
+    "OPTIMIZE",
+    "REPLACE",
+    "REASSIGN",
+    "MSCK",
+    "EXPLAIN",  # EXPLAIN runs queries on some engines — be safe
 }
 
 _ALLOWED_LEADS = {"SELECT", "WITH"}

@@ -13,17 +13,12 @@ Exits 0 on success, 1 on any assertion failure.
 from __future__ import annotations
 
 import asyncio
-import io
 import json
 import logging
-import os
 import sys
 import tempfile
-import time
 from contextlib import contextmanager
 from pathlib import Path
-from types import SimpleNamespace
-
 
 REPO = Path(__file__).resolve().parent.parent
 APP = REPO / "app"
@@ -56,8 +51,11 @@ def main() -> int:
     # ------------------------------------------------------------------
     with section("sql_guard"):
         from hermes_databricks.tools.sql_guard import validate_readonly
+
         assert_(validate_readonly("SELECT 1").ok, "SELECT 1 allowed")
-        assert_(validate_readonly("WITH q AS (SELECT 1) SELECT * FROM q").ok, "WITH ... SELECT allowed")
+        assert_(
+            validate_readonly("WITH q AS (SELECT 1) SELECT * FROM q").ok, "WITH ... SELECT allowed"
+        )
         assert_(not validate_readonly("INSERT INTO t VALUES (1)").ok, "INSERT rejected")
         assert_(not validate_readonly("DROP TABLE t").ok, "DROP rejected")
         assert_(not validate_readonly("SELECT 1; DROP TABLE x").ok, "stacked statements rejected")
@@ -69,12 +67,15 @@ def main() -> int:
     # ------------------------------------------------------------------
     with section("terminal_backend"):
         from hermes_databricks.tools import terminal_backend as tb
+
         with tempfile.TemporaryDirectory() as d:
             r = tb.run([sys.executable, "-c", "print('hi-from-terminal')"], hermes_home=d)
             assert_(r.ok and "hi-from-terminal" in r.stdout, "subprocess runs and captures stdout")
 
             r = tb.run([sys.executable, "-c", "import os; print(os.getcwd())"], hermes_home=d)
-            assert_(r.ok and r.stdout.strip().endswith("workspace"), "cwd defaults to <home>/workspace")
+            assert_(
+                r.ok and r.stdout.strip().endswith("workspace"), "cwd defaults to <home>/workspace"
+            )
 
             r = tb.run([sys.executable, "-c", "print(1)"], hermes_home=d, cwd="../escape")
             assert_((not r.ok) and "escapes workspace" in r.note, "cwd escape rejected")
@@ -85,20 +86,25 @@ def main() -> int:
             r = tb.run(["totally-not-a-real-binary-xyz"], hermes_home=d)
             assert_((not r.ok) and "not found on PATH" in r.note, "unknown binary diagnostic")
 
-            r = tb.run([sys.executable, "-c", "import time; time.sleep(5)"], hermes_home=d, timeout=1)
+            r = tb.run(
+                [sys.executable, "-c", "import time; time.sleep(5)"], hermes_home=d, timeout=1
+            )
             assert_((not r.ok) and "timeout" in r.note.lower(), "timeout enforced")
 
             r = tb.run([sys.executable, "-c", "print(1)"], backend="disabled", hermes_home=d)
             assert_(not r.ok and "disabled" in r.note, "disabled backend returns diagnostic")
 
             r = tb.run([sys.executable, "-c", "print(1)"], backend="databricks_job", hermes_home=d)
-            assert_(not r.ok and "databricks_job" in r.note, "databricks_job backend returns diagnostic")
+            assert_(
+                not r.ok and "databricks_job" in r.note, "databricks_job backend returns diagnostic"
+            )
 
     # ------------------------------------------------------------------
     # Databricks toolset guards
     # ------------------------------------------------------------------
     with section("databricks_toolset"):
         from hermes_databricks.tools import databricks_toolset as dts
+
         names = set(dts.tool_names())
         expected = {
             "databricks_serving_endpoint_status",
@@ -110,25 +116,40 @@ def main() -> int:
             "databricks_jobs_run_allowlist",
             "databricks_terminal",
         }
-        assert_(names == expected, f"tool_names() matches expected ({sorted(names) == sorted(expected)})")
+        assert_(
+            names == expected,
+            f"tool_names() matches expected ({sorted(names) == sorted(expected)})",
+        )
 
         payload = json.loads(dts._h_uc_query_readonly({"sql": "INSERT INTO t VALUES (1)"}))
         assert_("error" in payload and "INSERT" in payload["error"], "INSERT rejected by uc_query")
 
         payload = json.loads(dts._h_uc_query_readonly({"sql": "SELECT 1"}))
-        assert_("error" in payload and "HERMES_DATABRICKS_WAREHOUSE_ID" in payload["error"], "warehouse_id required")
+        assert_(
+            "error" in payload and "HERMES_DATABRICKS_WAREHOUSE_ID" in payload["error"],
+            "warehouse_id required",
+        )
 
-        payload = json.loads(dts._h_volume_write_agent_note({"relative_path": "../etc/passwd", "content": "x"}))
+        payload = json.loads(
+            dts._h_volume_write_agent_note({"relative_path": "../etc/passwd", "content": "x"})
+        )
         assert_("error" in payload, "agent_note rejects ..")
 
-        payload = json.loads(dts._h_volume_write_agent_note({"relative_path": "/etc/passwd", "content": "x"}))
+        payload = json.loads(
+            dts._h_volume_write_agent_note({"relative_path": "/etc/passwd", "content": "x"})
+        )
         assert_("error" in payload, "agent_note rejects absolute")
 
         payload = json.loads(dts._h_jobs_run_allowlist({"job_id": 12345}))
-        assert_("error" in payload and "allowlist" in payload["error"].lower(), "jobs.run requires allowlist")
+        assert_(
+            "error" in payload and "allowlist" in payload["error"].lower(),
+            "jobs.run requires allowlist",
+        )
 
         payload = json.loads(dts._h_jobs_run_allowlist({"job_id": "x"}))
-        assert_("error" in payload and "integer" in payload["error"], "jobs.run validates job_id type")
+        assert_(
+            "error" in payload and "integer" in payload["error"], "jobs.run validates job_id type"
+        )
 
         payload = json.loads(dts._h_serving_endpoint_status({}))
         assert_("error" in payload, "serving_endpoint_status requires endpoint_name")
@@ -138,6 +159,7 @@ def main() -> int:
     # ------------------------------------------------------------------
     with section("volume_fs"):
         from hermes_databricks.fs.volume_fs import UCVolumeHome
+
         with tempfile.TemporaryDirectory() as d:
             home = UCVolumeHome(local_root=Path(d), volume_root="/Volumes/main/agents/hermes_home")
             try:
@@ -165,12 +187,17 @@ def main() -> int:
     # ------------------------------------------------------------------
     with section("logging_redaction"):
         from hermes_databricks.observability.logging import RedactingFormatter, redact
+
         fmt = RedactingFormatter()
-        rec = logging.LogRecord("t", logging.INFO, "x.py", 1, "Bearer SUPERSECRETOPENAITOKEN", (), None)
+        rec = logging.LogRecord(
+            "t", logging.INFO, "x.py", 1, "Bearer SUPERSECRETOPENAITOKEN", (), None
+        )
         out = fmt.format(rec)
         assert_("SUPERSECRETOPENAITOKEN" not in out, "Bearer token redacted")
 
-        rec = logging.LogRecord("t", logging.INFO, "x.py", 1, "postgres://u:topsecretpw@h/d", (), None)
+        rec = logging.LogRecord(
+            "t", logging.INFO, "x.py", 1, "postgres://u:topsecretpw@h/d", (), None
+        )
         out = fmt.format(rec)
         assert_("topsecretpw" not in out, "Postgres password redacted")
 
@@ -183,7 +210,11 @@ def main() -> int:
     # ------------------------------------------------------------------
     with section("backend_registry"):
         from hermes_databricks.config import Config
-        from hermes_databricks.tools.backend_registry import build_toolset_selection, describe_backends
+        from hermes_databricks.tools.backend_registry import (
+            build_toolset_selection,
+            describe_backends,
+        )
+
         cfg = Config()
         enabled, disabled = build_toolset_selection(cfg)
         assert_("databricks" in enabled, "databricks toolset enabled by default")
@@ -203,6 +234,7 @@ def main() -> int:
             print("  SKIP  httpx not installed in this venv")
             return _summarise()
         from hermes_databricks import telegram_polling as tp
+
         c = tp.TelegramClient(token="t", primary_user_handle="@Alice", allowed_usernames=["@Bob"])
         assert_(c._is_allowed("alice"), "primary user (alice) allowed")
         assert_(c._is_allowed("bob"), "explicit allowlist member (bob) allowed")
@@ -214,6 +246,7 @@ def main() -> int:
 
         async def _probe():
             return await c.health_probe()
+
         probe = asyncio.run(_probe())
         assert_(probe["status"] == "starting", "health_probe reports starting before first poll")
 

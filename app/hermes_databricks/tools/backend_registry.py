@@ -12,15 +12,14 @@ their own configuration.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 from hermes_databricks.config import Config
-
 
 # Toolsets we enable by default for the App. Pure-Python + Databricks-
 # friendly. (Heavy host-dependent toolsets stay disabled and emit
 # explicit "backend required" diagnostics when invoked.)
-DEFAULT_ENABLED_TOOLSETS: List[str] = [
+DEFAULT_ENABLED_TOOLSETS: list[str] = [
     "core",
     "file",
     "web",
@@ -34,14 +33,14 @@ DEFAULT_ENABLED_TOOLSETS: List[str] = [
 ]
 
 # Toolsets we explicitly disable for the App container.
-DEFAULT_DISABLED_TOOLSETS: List[str] = [
-    "voice",          # no audio devices
-    "computer-use",   # macOS-only
+DEFAULT_DISABLED_TOOLSETS: list[str] = [
+    "voice",  # no audio devices
+    "computer-use",  # macOS-only
     "homeassistant",  # external network required + secret
 ]
 
 
-def build_toolset_selection(cfg: Config) -> Tuple[List[str], List[str]]:
+def build_toolset_selection(cfg: Config) -> tuple[list[str], list[str]]:
     """Return ``(enabled, disabled)`` for ``AIAgent(enabled_toolsets=..., disabled_toolsets=...)``."""
     enabled = list(DEFAULT_ENABLED_TOOLSETS)
     disabled = list(DEFAULT_DISABLED_TOOLSETS)
@@ -75,10 +74,10 @@ class BackendStatus:
     selected: str
     available: bool
     reason: str = ""
-    detail: Dict[str, Any] | None = None
+    detail: dict[str, Any] | None = None
 
 
-def describe_backends(cfg: Config) -> Dict[str, Any]:
+def describe_backends(cfg: Config) -> dict[str, Any]:
     """Summarise the configured backends — drives ``/debug/tools``."""
     from hermes_databricks.tools import browser_backend, mcp_backend
 
@@ -89,10 +88,7 @@ def describe_backends(cfg: Config) -> Dict[str, Any]:
         reason=(
             "Default in-app subprocess backend (cwd restricted, 60s default timeout)."
             if cfg.terminal_backend == "in_app_subprocess"
-            else (
-                "Only in_app_subprocess is wired today; "
-                f"selected={cfg.terminal_backend!r}"
-            )
+            else (f"Only in_app_subprocess is wired today; selected={cfg.terminal_backend!r}")
         ),
     )
 
@@ -124,8 +120,11 @@ def describe_backends(cfg: Config) -> Dict[str, Any]:
             }
             for b in (terminal, browser, mcp)
         },
-        "toolset_selection": dict(zip(
-            ("enabled", "disabled"),
-            build_toolset_selection(cfg),
-        )),
+        "toolset_selection": dict(
+            zip(
+                ("enabled", "disabled"),
+                build_toolset_selection(cfg),
+                strict=False,
+            )
+        ),
     }

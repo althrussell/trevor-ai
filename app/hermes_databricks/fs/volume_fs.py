@@ -30,17 +30,18 @@ Security:
 
 from __future__ import annotations
 
+import builtins
+import contextlib
 import io
 import logging
-import os
 import threading
 import time
+from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Optional, Set
+from typing import Any
 
 from hermes_databricks.config import Config
-
 
 log = logging.getLogger("hermes_databricks.fs.volume_fs")
 
@@ -89,10 +90,10 @@ class FileEntry:
     name: str
     relative_path: str
     is_dir: bool
-    size: Optional[int] = None
-    modified_at: Optional[float] = None
+    size: int | None = None
+    modified_at: float | None = None
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "name": self.name,
             "relative_path": self.relative_path,
@@ -119,26 +120,26 @@ class UCVolumeHome:
         if not volume_root.startswith("/Volumes/"):
             raise ValueError(f"volume_root must start with /Volumes/, got {volume_root!r}")
         self.volume_root = volume_root.rstrip("/")
-        self.durable_subpaths: Set[str] = {s.strip("/") for s in durable_subpaths if s}
-        self.exclude: Set[str] = {s.strip("/") for s in exclude if s}
+        self.durable_subpaths: set[str] = {s.strip("/") for s in durable_subpaths if s}
+        self.exclude: set[str] = {s.strip("/") for s in exclude if s}
         self.max_file_bytes = max_file_mb * 1024 * 1024
         self._workspace_factory = workspace_factory
         self._workspace: Any = None
         self._lock = threading.RLock()
-        self._last_sync_from_volume: Optional[float] = None
-        self._last_sync_to_volume: Optional[float] = None
+        self._last_sync_from_volume: float | None = None
+        self._last_sync_to_volume: float | None = None
         self._files_uploaded: int = 0
         self._files_downloaded: int = 0
         self._bytes_uploaded: int = 0
         self._bytes_downloaded: int = 0
-        self._errors: List[str] = []
+        self._errors: list[str] = []
 
     # ------------------------------------------------------------------
     # Factories
     # ------------------------------------------------------------------
 
     @classmethod
-    def from_config(cls, cfg: Config, *, workspace_factory=None) -> "UCVolumeHome":
+    def from_config(cls, cfg: Config, *, workspace_factory=None) -> UCVolumeHome:
         return cls(
             local_root=cfg.hermes_home,
             volume_root=cfg.hermes_home_volume_path,
@@ -169,7 +170,7 @@ class UCVolumeHome:
             return self.local_root
         # Reject any explicit absolute path (POSIX or Windows drive letters).
         # We do NOT silently strip leading slashes — that's confusing.
-        if rel_str.startswith("/") or rel_str.startswith("\\") or (len(rel_str) > 1 and rel_str[1] == ":"):
+        if rel_str.startswith(("/", "\\")) or (len(rel_str) > 1 and rel_str[1] == ":"):
             raise ValueError(f"Absolute paths are not allowed under HERMES_HOME: {rel!r}")
         # Normalise separators; reject ``..`` and any post-resolution escape.
         normalised = rel_str.replace("\\", "/")
@@ -187,7 +188,7 @@ class UCVolumeHome:
         rel_str = str(rel).strip()
         if not rel_str:
             return self.volume_root
-        if rel_str.startswith("/") or rel_str.startswith("\\") or (len(rel_str) > 1 and rel_str[1] == ":"):
+        if rel_str.startswith(("/", "\\")) or (len(rel_str) > 1 and rel_str[1] == ":"):
             raise ValueError(f"Absolute paths are not allowed: {rel!r}")
         normalised = rel_str.replace("\\", "/")
         parts = [p for p in normalised.split("/") if p not in ("", ".")]
@@ -199,10 +200,7 @@ class UCVolumeHome:
         rel_norm = rel.strip("/")
         if not rel_norm:
             return False
-        for excl in self.exclude:
-            if rel_norm == excl or rel_norm.startswith(excl + "/"):
-                return True
-        return False
+        return any(rel_norm == excl or rel_norm.startswith(excl + "/") for excl in self.exclude)
 
     def _is_durable(self, rel: str) -> bool:
         rel_norm = rel.strip("/")
@@ -254,10 +252,8 @@ class UCVolumeHome:
                     if child.is_file():
                         child.unlink(missing_ok=True)
                     else:
-                        try:
+                        with contextlib.suppress(OSError):
                             child.rmdir()
-                        except OSError:
-                            pass
                 path.rmdir()
             else:
                 path.unlink(missing_ok=True)
@@ -268,35 +264,39 @@ class UCVolumeHome:
             except Exception as exc:
                 log.debug("Volume delete swallowed for %s: %s", rel, exc)
 
-    def list(self, rel: str = "") -> List[Dict[str, Any]]:
+    def list(self, rel: str = "") -> builtins.list[dict[str, Any]]:
         local_dir = self._resolve_local(rel)
         if not local_dir.exists():
             return []
-        out: List[FileEntry] = []
+        out: list[FileEntry] = []
         for entry in sorted(local_dir.iterdir()):
             stat = entry.stat()
             relative = str(entry.relative_to(self.local_root))
-            out.append(FileEntry(
-                name=entry.name,
-                relative_path=relative,
-                is_dir=entry.is_dir(),
-                size=stat.st_size if entry.is_file() else None,
-                modified_at=stat.st_mtime,
-            ))
+            out.append(
+                FileEntry(
+                    name=entry.name,
+                    relative_path=relative,
+                    is_dir=entry.is_dir(),
+                    size=stat.st_size if entry.is_file() else None,
+                    modified_at=stat.st_mtime,
+                )
+            )
         return [e.to_dict() for e in out]
 
     # ------------------------------------------------------------------
     # Sync — volume → local
     # ------------------------------------------------------------------
 
-    def sync_from_volume(self) -> Dict[str, Any]:
+    def sync_from_volume(self) -> dict[str, Any]:
         with self._lock:
             self._files_downloaded = 0
             self._bytes_downloaded = 0
             try:
                 self._walk_volume_into_local(self.volume_root)
             except _NotFound:
-                log.info("UC Volume %s does not exist yet — skipping initial sync", self.volume_root)
+                log.info(
+                    "UC Volume %s does not exist yet — skipping initial sync", self.volume_root
+                )
             self._last_sync_from_volume = time.time()
             return {
                 "files_downloaded": self._files_downloaded,
@@ -340,17 +340,17 @@ class UCVolumeHome:
                 log.exception("download failed for %s", path)
                 self._errors.append(f"download:{path}")
 
-    def _volume_to_relative(self, vol_path: str) -> Optional[str]:
+    def _volume_to_relative(self, vol_path: str) -> str | None:
         if not vol_path.startswith(self.volume_root):
             return None
-        rel = vol_path[len(self.volume_root):].lstrip("/")
+        rel = vol_path[len(self.volume_root) :].lstrip("/")
         return rel or None
 
     # ------------------------------------------------------------------
     # Sync — local → volume
     # ------------------------------------------------------------------
 
-    def sync_to_volume(self, *, only_durable: bool = True) -> Dict[str, Any]:
+    def sync_to_volume(self, *, only_durable: bool = True) -> dict[str, Any]:
         with self._lock:
             self._files_uploaded = 0
             self._bytes_uploaded = 0
@@ -375,13 +375,13 @@ class UCVolumeHome:
                 "at": self._last_sync_to_volume,
             }
 
-    def _durable_local_paths(self) -> List[Path]:
-        out: List[Path] = []
+    def _durable_local_paths(self) -> builtins.list[Path]:
+        out: list[Path] = []
         for sub in self.durable_subpaths:
-            out.append((self.local_root / sub))
+            out.append(self.local_root / sub)
         return out
 
-    def touch_subpath(self, subpath: str) -> Dict[str, Any]:
+    def touch_subpath(self, subpath: str) -> dict[str, Any]:
         """Upload everything under ``subpath`` (relative to HERMES_HOME) now.
 
         Used by the cron scheduler after every tick to push
@@ -449,7 +449,7 @@ class UCVolumeHome:
     # Diagnostics
     # ------------------------------------------------------------------
 
-    def status(self) -> Dict[str, Any]:
+    def status(self) -> dict[str, Any]:
         return {
             "local_root": str(self.local_root),
             "volume_root": self.volume_root,
@@ -463,7 +463,7 @@ class UCVolumeHome:
             "errors_running": list(self._errors[-25:]),
         }
 
-    async def health_probe(self) -> Dict[str, Any]:
+    async def health_probe(self) -> dict[str, Any]:
         try:
             w = self._client()
             # Cheapest reach: list the volume root. Tolerate NotFound (first deploy).
@@ -502,6 +502,7 @@ class UCVolumeHome:
             self._workspace = self._workspace_factory()
             return self._workspace
         from databricks.sdk import WorkspaceClient  # type: ignore
+
         self._workspace = WorkspaceClient()
         return self._workspace
 

@@ -19,11 +19,9 @@ import logging
 import os
 import sys
 import time
-from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from hermes_databricks.config import Config
-
 
 log = logging.getLogger("hermes_databricks.runtime")
 
@@ -44,12 +42,12 @@ class HermesRuntime:
         self.scheduler = None  # Hermes cron scheduler (Phase 8)
         self.cron_available: bool = False
         self._cron_tick_count: int = 0
-        self._cron_last_tick_at: Optional[float] = None
+        self._cron_last_tick_at: float | None = None
         self._cron_last_executed: int = 0
-        self._cron_last_error: Optional[str] = None
+        self._cron_last_error: str | None = None
 
         # Error capture for diagnostics
-        self.errors: Dict[str, str] = {}
+        self.errors: dict[str, str] = {}
 
     # ------------------------------------------------------------------
     # Lifecycle
@@ -63,6 +61,7 @@ class HermesRuntime:
         # Phase 5: UC Volume HERMES_HOME mirror
         try:
             from hermes_databricks.fs.volume_fs import UCVolumeHome
+
             self.home_fs = UCVolumeHome.from_config(self.cfg)
             self.home_fs.ensure_local_dirs()
             try:
@@ -81,6 +80,7 @@ class HermesRuntime:
         # Phase 4: Lakebase SessionDB
         try:
             from hermes_databricks.state.lakebase_session_db import LakebaseSessionDB
+
             self.session_db = LakebaseSessionDB.from_config(self.cfg)
             self.session_db.ensure_schema()
         except Exception as exc:
@@ -90,6 +90,7 @@ class HermesRuntime:
         # Phase 3: Databricks model provider
         try:
             from hermes_databricks.databricks_provider import DatabricksOpenAIClientFactory
+
             self.provider = DatabricksOpenAIClientFactory(endpoint=self.cfg.llm_endpoint)
             # Force a client construction so we surface obvious config errors early.
             _ = self.provider.client()
@@ -152,6 +153,7 @@ class HermesRuntime:
         #    Hermes' CLI/introspection sees us as a first-class provider.
         try:
             from hermes_databricks.databricks_provider import register_provider_profile
+
             register_provider_profile(self.cfg)
         except Exception:
             log.debug("register_provider_profile failed (non-fatal)", exc_info=True)
@@ -160,6 +162,7 @@ class HermesRuntime:
         #    Hermes' OpenAI client construction succeeds; we then swap
         #    .client with the Workspace-authenticated one in Phase 3.
         from hermes_databricks.tools.backend_registry import build_toolset_selection
+
         enabled, disabled = build_toolset_selection(self.cfg)
 
         agent = AIAgent(
@@ -185,6 +188,7 @@ class HermesRuntime:
         # 7. Phase 7: register the Databricks-native toolset.
         try:
             from hermes_databricks.tools.databricks_toolset import register_databricks_toolset
+
             register_databricks_toolset(self.cfg, home_fs=self.home_fs)
         except Exception:
             log.exception("databricks toolset registration failed")
@@ -193,6 +197,7 @@ class HermesRuntime:
         # 8. Phase 8: surface the cron scheduler.
         try:
             from cron.scheduler import tick as _cron_tick  # type: ignore
+
             self.scheduler = _cron_tick
             self.cron_available = True
         except Exception:
@@ -231,10 +236,10 @@ class HermesRuntime:
     def run_turn(
         self,
         user_message: str,
-        session_id: Optional[str] = None,
-        system_message: Optional[str] = None,
-        metadata: Optional[Dict[str, Any]] = None,
-    ) -> Dict[str, Any]:
+        session_id: str | None = None,
+        system_message: str | None = None,
+        metadata: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
         if session_id is None:
             session_id = "debug:adhoc"
 
@@ -249,6 +254,7 @@ class HermesRuntime:
                     "provider is initialised. See /debug/runtime.errors."
                 )
             from hermes_databricks.databricks_provider import quick_chat
+
             payload = quick_chat(self.provider, message=user_message, system=system_message)
             payload["session_id"] = session_id
             payload["mode"] = "direct"
@@ -294,9 +300,7 @@ class HermesRuntime:
                 "partial": result.get("partial"),
                 "error": result.get("error"),
                 "messages_count": (
-                    len(result["messages"])
-                    if isinstance(result.get("messages"), list)
-                    else None
+                    len(result["messages"]) if isinstance(result.get("messages"), list) else None
                 ),
             }
         else:
@@ -317,8 +321,8 @@ class HermesRuntime:
         self,
         session_id: str,
         user_message: str,
-        payload: Dict[str, Any],
-        metadata: Dict[str, Any],
+        payload: dict[str, Any],
+        metadata: dict[str, Any],
     ) -> None:
         """Best-effort persistence for fallback direct-turn calls."""
         if self.session_db is None:
@@ -347,15 +351,17 @@ class HermesRuntime:
         except Exception:
             log.exception("direct-turn persistence failed")
 
-    def status(self) -> Dict[str, Any]:
+    def status(self) -> dict[str, Any]:
         try:
             import hermes_constants  # type: ignore
+
             hermes_version = getattr(hermes_constants, "__version__", None)
         except Exception:
             hermes_version = None
 
         try:
             from importlib.metadata import version as _pkg_version
+
             hermes_pkg_version = _pkg_version("hermes-agent")
         except Exception:
             hermes_pkg_version = None
@@ -376,7 +382,7 @@ class HermesRuntime:
             "python": sys.version.split()[0],
         }
 
-    def tool_summary(self) -> Dict[str, Any]:
+    def tool_summary(self) -> dict[str, Any]:
         from hermes_databricks.tools.backend_registry import describe_backends
         from hermes_databricks.tools.databricks_toolset import tool_names as _db_tool_names
 
@@ -393,7 +399,7 @@ class HermesRuntime:
             all_names = _registry.get_all_tool_names()
             tool_to_ts = _registry.get_tool_to_toolset_map()
             ts_avail = _registry.check_toolset_requirements()
-            grouped: Dict[str, List[str]] = {}
+            grouped: dict[str, list[str]] = {}
             for name in all_names:
                 ts = tool_to_ts.get(name, "unknown")
                 grouped.setdefault(ts, []).append(name)
@@ -408,20 +414,21 @@ class HermesRuntime:
                 enabled_tools = sorted(getattr(self.agent, "selected_tools", []) or [])
                 out["registry"]["selected_tools"] = enabled_tools
                 out["registry"]["selected_tool_count"] = len(enabled_tools)
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             out["registry"] = {"available": False, "reason": f"{type(exc).__name__}: {exc}"}
         return out
 
-    def cron_summary(self) -> Dict[str, Any]:
+    def cron_summary(self) -> dict[str, Any]:
         if not self.cron_available:
             return {"available": False, "reason": "hermes cron unavailable"}
         try:
             from cron.jobs import load_jobs  # type: ignore
+
             jobs = load_jobs()
         except Exception as exc:
             return {"available": True, "error": f"{type(exc).__name__}: {exc}", "jobs": []}
 
-        out: Dict[str, Any] = {
+        out: dict[str, Any] = {
             "available": True,
             "count": len(jobs),
             "jobs": jobs,
@@ -432,7 +439,7 @@ class HermesRuntime:
         }
         return out
 
-    def cron_tick(self) -> Dict[str, Any]:
+    def cron_tick(self) -> dict[str, Any]:
         """Run one cron scheduler tick. Idempotent; safe to call frequently.
 
         Persists a ``cron_tick`` event to Lakebase regardless of how many
@@ -442,10 +449,10 @@ class HermesRuntime:
         if not self.cron_available or self.scheduler is None:
             return {"available": False}
         executed = 0
-        err: Optional[str] = None
+        err: str | None = None
         try:
             executed = int(self.scheduler(verbose=False) or 0)
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             log.exception("cron tick failed")
             err = f"{type(exc).__name__}: {exc}"
             self._cron_last_error = err
@@ -476,7 +483,7 @@ class HermesRuntime:
 
         return {"executed": executed, "error": err, "tick_count": self._cron_tick_count}
 
-    def run_cron_job(self, job_id: str) -> Dict[str, Any]:
+    def run_cron_job(self, job_id: str) -> dict[str, Any]:
         if not self.cron_available:
             raise RuntimeError("Hermes cron scheduler unavailable")
         try:
@@ -519,14 +526,14 @@ class HermesRuntime:
     # Health probes
     # ------------------------------------------------------------------
 
-    async def health_probe(self) -> Dict[str, Any]:
+    async def health_probe(self) -> dict[str, Any]:
         return {
             "initialized": self._initialized,
             "agent_loaded": self.agent is not None,
             "errors": dict(self.errors),
         }
 
-    async def health_probe_model(self) -> Dict[str, Any]:
+    async def health_probe_model(self) -> dict[str, Any]:
         if self.provider is None:
             return {"status": "unavailable", "reason": "provider not initialised"}
         try:

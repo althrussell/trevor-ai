@@ -95,6 +95,9 @@ ignore = [
 [tool.ruff.lint.per-file-ignores]
 "tests/**" = ["B011", "S101"]
 "tests/run_offline_checks.py" = ["E402"]  # sys.path tweaks before imports
+# Databricks notebooks have widgets, dbutils/spark notebook globals, and
+# magic-cell-style interleaved imports that ruff can't model.
+"sql/setup_lakebase.py" = ["F821", "E402"]
 
 [tool.ruff.lint.isort]
 known-first-party = ["hermes_databricks"]

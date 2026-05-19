@@ -29,10 +29,9 @@ from __future__ import annotations
 import logging
 import os
 import threading
-from typing import Any, Dict, Optional
+from typing import Any
 
 from hermes_databricks.config import Config
-
 
 log = logging.getLogger("hermes_databricks.databricks_provider")
 
@@ -61,7 +60,7 @@ class DatabricksOpenAIClientFactory:
         self._lock = threading.Lock()
         self._client: Any = None
         self._workspace: Any = None
-        self._base_url: Optional[str] = None
+        self._base_url: str | None = None
         self._http_client: Any = None
 
     # -------------------- public API --------------------
@@ -85,7 +84,7 @@ class DatabricksOpenAIClientFactory:
             self._http_client = None
 
     @property
-    def base_url(self) -> Optional[str]:
+    def base_url(self) -> str | None:
         return self._base_url
 
     @property
@@ -120,7 +119,7 @@ class DatabricksOpenAIClientFactory:
         # ``run_agent._create_openai_client``.
         bearer = self._fresh_bearer_token()
         agent.api_key = bearer or "no-token"
-        new_kwargs: Dict[str, Any] = {
+        new_kwargs: dict[str, Any] = {
             "api_key": agent.api_key,
             "base_url": agent.base_url,
         }
@@ -136,14 +135,16 @@ class DatabricksOpenAIClientFactory:
 
         log.info(
             "Databricks OpenAI client applied to AIAgent (streaming disabled, fresh bearer)",
-            extra={"extras": {
-                "endpoint": self.endpoint,
-                "base_url": agent.base_url,
-                "bearer_set": bool(bearer),
-            }},
+            extra={
+                "extras": {
+                    "endpoint": self.endpoint,
+                    "base_url": agent.base_url,
+                    "bearer_set": bool(bearer),
+                }
+            },
         )
 
-    def _fresh_bearer_token(self) -> Optional[str]:
+    def _fresh_bearer_token(self) -> str | None:
         """Mint a fresh Databricks bearer token via the SDK auth flow.
 
         Uses ``WorkspaceConfig.authenticate()`` which returns the
@@ -159,6 +160,7 @@ class DatabricksOpenAIClientFactory:
                     w = self._workspace_factory()
                 else:
                     from databricks.sdk import WorkspaceClient  # type: ignore
+
                     w = WorkspaceClient()
                 self._workspace = w
             headers = w.config.authenticate() or {}
@@ -197,6 +199,7 @@ class DatabricksOpenAIClientFactory:
             w = self._workspace_factory()
         else:
             from databricks.sdk import WorkspaceClient  # type: ignore
+
             w = WorkspaceClient()
 
         self._workspace = w
@@ -265,9 +268,8 @@ def _scrub_integer_schema_constraints(node: Any) -> int:
     removed = 0
     if isinstance(node, dict):
         node_type = node.get("type")
-        is_integer = (
-            node_type == "integer"
-            or (isinstance(node_type, list) and "integer" in node_type)
+        is_integer = node_type == "integer" or (
+            isinstance(node_type, list) and "integer" in node_type
         )
         if is_integer:
             for k in ("minimum", "maximum", "exclusiveMinimum", "exclusiveMaximum", "multipleOf"):
@@ -282,7 +284,7 @@ def _scrub_integer_schema_constraints(node: Any) -> int:
     return removed
 
 
-def _sanitise_oai_kwargs(kwargs: Dict[str, Any]) -> Dict[str, Any]:
+def _sanitise_oai_kwargs(kwargs: dict[str, Any]) -> dict[str, Any]:
     """Return a copy of *kwargs* safe to send to Databricks Model Serving."""
     if "stream_options" in kwargs:
         kwargs = dict(kwargs)
@@ -299,7 +301,8 @@ def _sanitise_oai_kwargs(kwargs: Dict[str, Any]) -> Dict[str, Any]:
         if removed:
             log.debug(
                 "Stripped %d integer-schema constraint(s) from %d tool definition(s)",
-                removed, len(kwargs["tools"]),
+                removed,
+                len(kwargs["tools"]),
             )
     return kwargs
 
@@ -329,9 +332,7 @@ def _install_request_sanitiser(oai_client: Any) -> None:
 
     original = getattr(Completions, "create", None)
     if original is None:
-        log.warning(
-            "openai Completions class has no .create; sanitiser not installed"
-        )
+        log.warning("openai Completions class has no .create; sanitiser not installed")
         return
     if getattr(original, "_hermes_databricks_sanitised", False):
         return  # already installed
@@ -360,6 +361,7 @@ def _install_request_sanitiser(oai_client: Any) -> None:
         if async_original is not None and not getattr(
             async_original, "_hermes_databricks_sanitised", False
         ):
+
             async def acreate_sanitised(self, *args: Any, **kwargs: Any):  # type: ignore[no-untyped-def]
                 kwargs = _sanitise_oai_kwargs(kwargs)
                 return await async_original(self, *args, **kwargs)
@@ -420,9 +422,9 @@ def quick_chat(
     factory: DatabricksOpenAIClientFactory,
     *,
     message: str,
-    system: Optional[str] = None,
+    system: str | None = None,
     max_tokens: int = 256,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Direct one-shot call used by ``/debug/model-turn`` before Hermes is wired."""
     oai = factory.client()
     messages = []
@@ -439,11 +441,15 @@ def quick_chat(
     choice = resp.choices[0] if resp.choices else None
     text = (choice.message.content if choice and getattr(choice, "message", None) else "") or ""
     usage = getattr(resp, "usage", None)
-    usage_dict = {
-        "prompt_tokens": getattr(usage, "prompt_tokens", None),
-        "completion_tokens": getattr(usage, "completion_tokens", None),
-        "total_tokens": getattr(usage, "total_tokens", None),
-    } if usage is not None else {}
+    usage_dict = (
+        {
+            "prompt_tokens": getattr(usage, "prompt_tokens", None),
+            "completion_tokens": getattr(usage, "completion_tokens", None),
+            "total_tokens": getattr(usage, "total_tokens", None),
+        }
+        if usage is not None
+        else {}
+    )
 
     return {
         "text": text,

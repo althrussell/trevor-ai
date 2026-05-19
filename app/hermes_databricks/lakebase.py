@@ -29,10 +29,10 @@ import os
 import threading
 import time
 import uuid
-from typing import Any, Iterator, Optional
+from collections.abc import Iterator
+from typing import Any
 
 from hermes_databricks.config import Config
-
 
 log = logging.getLogger("hermes_databricks.lakebase")
 
@@ -48,7 +48,7 @@ class Lakebase:
         instance_name: str,
         *,
         database: str = "databricks_postgres",
-        sp_client_id: Optional[str] = None,
+        sp_client_id: str | None = None,
         workspace_factory=None,
     ) -> None:
         self.instance_name = instance_name
@@ -56,9 +56,9 @@ class Lakebase:
         self.sp_client_id = sp_client_id or os.environ.get("DATABRICKS_CLIENT_ID", "")
         self._lock = threading.RLock()
         self._conn: Any = None
-        self._cred_token: Optional[str] = None
+        self._cred_token: str | None = None
         self._cred_minted_at: float = 0.0
-        self._instance_dns: Optional[str] = None
+        self._instance_dns: str | None = None
         self._workspace_factory = workspace_factory
         self._workspace: Any = None
 
@@ -67,7 +67,7 @@ class Lakebase:
     # ------------------------------------------------------------------
 
     @classmethod
-    def from_config(cls, cfg: Config, *, workspace_factory=None) -> "Lakebase":
+    def from_config(cls, cfg: Config, *, workspace_factory=None) -> Lakebase:
         return cls(
             instance_name=cfg.lakebase_instance,
             database=cfg.lakebase_database,
@@ -107,16 +107,16 @@ class Lakebase:
         with self._lock:
             self._close_connection()
 
-    def execute(self, sql: str, params: Optional[tuple] = None) -> None:
+    def execute(self, sql: str, params: tuple | None = None) -> None:
         with self.cursor() as cur:
             cur.execute(sql, params)
 
-    def fetchone(self, sql: str, params: Optional[tuple] = None) -> Optional[tuple]:
+    def fetchone(self, sql: str, params: tuple | None = None) -> tuple | None:
         with self.cursor() as cur:
             cur.execute(sql, params)
             return cur.fetchone()
 
-    def fetchall(self, sql: str, params: Optional[tuple] = None) -> list:
+    def fetchall(self, sql: str, params: tuple | None = None) -> list:
         with self.cursor() as cur:
             cur.execute(sql, params)
             return list(cur.fetchall())
@@ -145,6 +145,7 @@ class Lakebase:
             self._workspace = self._workspace_factory()
             return self._workspace
         from databricks.sdk import WorkspaceClient  # type: ignore
+
         self._workspace = WorkspaceClient()
         return self._workspace
 
@@ -201,12 +202,14 @@ class Lakebase:
         )
         log.info(
             "Lakebase connection opened",
-            extra={"extras": {
-                "instance": self.instance_name,
-                "host": dns,
-                "user": sp[:8] + "…",
-                "database": self.database,
-            }},
+            extra={
+                "extras": {
+                    "instance": self.instance_name,
+                    "host": dns,
+                    "user": sp[:8] + "…",
+                    "database": self.database,
+                }
+            },
         )
         return self._conn
 

@@ -12,9 +12,6 @@ is more brittle than directly testing ``_dispatch`` with a stubbed
 
 from __future__ import annotations
 
-import asyncio
-from typing import List, Tuple
-
 import pytest
 
 from hermes_databricks import telegram_polling as tp
@@ -34,7 +31,9 @@ def test_constructor_rejects_empty_token():
 
 
 def test_allowlist_normalises_at_prefix_and_case():
-    c = tp.TelegramClient(token="t", primary_user_handle="@Alice", allowed_usernames=["@bob", "Carol"])
+    c = tp.TelegramClient(
+        token="t", primary_user_handle="@Alice", allowed_usernames=["@bob", "Carol"]
+    )
     # primary user joins the allowlist automatically
     assert "alice" in c.allowed_usernames
     assert "bob" in c.allowed_usernames
@@ -72,7 +71,7 @@ def test_status_default_shape():
 @pytest.mark.asyncio
 async def test_dispatch_rejects_unknown_user(monkeypatch):
     c = _client()
-    sent: List[Tuple[int, str]] = []
+    sent: list[tuple[int, str]] = []
 
     async def fake_send(chat_id, text, *, parse_mode=None):
         sent.append((chat_id, text))
@@ -80,17 +79,21 @@ async def test_dispatch_rejects_unknown_user(monkeypatch):
 
     monkeypatch.setattr(c, "send_message", fake_send)
 
-    received: List[str] = []
+    received: list[str] = []
 
     async def cb(chat_id, username, text):
         received.append(text)
         return None
 
-    await c._dispatch(None, {  # type: ignore[arg-type]
-        "chat": {"id": 7},
-        "from": {"username": "bob"},
-        "text": "hello",
-    }, cb)
+    await c._dispatch(
+        None,
+        {  # type: ignore[arg-type]
+            "chat": {"id": 7},
+            "from": {"username": "bob"},
+            "text": "hello",
+        },
+        cb,
+    )
 
     assert received == []
     assert sent and "not on the allowlist" in sent[-1][1]
@@ -100,7 +103,7 @@ async def test_dispatch_rejects_unknown_user(monkeypatch):
 @pytest.mark.asyncio
 async def test_dispatch_calls_callback_for_allowed(monkeypatch):
     c = _client()
-    sent: List[Tuple[int, str]] = []
+    sent: list[tuple[int, str]] = []
 
     async def fake_send(chat_id, text, *, parse_mode=None):
         sent.append((chat_id, text))
@@ -108,17 +111,21 @@ async def test_dispatch_calls_callback_for_allowed(monkeypatch):
 
     monkeypatch.setattr(c, "send_message", fake_send)
 
-    received: List[Tuple[int, str, str]] = []
+    received: list[tuple[int, str, str]] = []
 
     async def cb(chat_id, username, text):
         received.append((chat_id, username, text))
         return f"echo: {text}"
 
-    await c._dispatch(None, {  # type: ignore[arg-type]
-        "chat": {"id": 9},
-        "from": {"username": "alice"},
-        "text": "ping",
-    }, cb)
+    await c._dispatch(
+        None,
+        {  # type: ignore[arg-type]
+            "chat": {"id": 9},
+            "from": {"username": "alice"},
+            "text": "ping",
+        },
+        cb,
+    )
 
     assert received == [(9, "alice", "ping")]
     assert sent and "echo: ping" in sent[-1][1]
@@ -127,7 +134,7 @@ async def test_dispatch_calls_callback_for_allowed(monkeypatch):
 @pytest.mark.asyncio
 async def test_dispatch_handles_callback_exception(monkeypatch):
     c = _client()
-    sent: List[Tuple[int, str]] = []
+    sent: list[tuple[int, str]] = []
 
     async def fake_send(chat_id, text, *, parse_mode=None):
         sent.append((chat_id, text))
@@ -138,11 +145,15 @@ async def test_dispatch_handles_callback_exception(monkeypatch):
     async def cb(chat_id, username, text):
         raise RuntimeError("boom")
 
-    await c._dispatch(None, {  # type: ignore[arg-type]
-        "chat": {"id": 9},
-        "from": {"username": "alice"},
-        "text": "ping",
-    }, cb)
+    await c._dispatch(
+        None,
+        {  # type: ignore[arg-type]
+            "chat": {"id": 9},
+            "from": {"username": "alice"},
+            "text": "ping",
+        },
+        cb,
+    )
 
     assert sent and "Agent error" in sent[-1][1]
     assert "boom" in sent[-1][1]
@@ -151,7 +162,7 @@ async def test_dispatch_handles_callback_exception(monkeypatch):
 @pytest.mark.asyncio
 async def test_dispatch_handles_non_text():
     c = _client()
-    sent: List[Tuple[int, str]] = []
+    sent: list[tuple[int, str]] = []
 
     async def fake_send(chat_id, text, *, parse_mode=None):
         sent.append((chat_id, text))
@@ -162,11 +173,15 @@ async def test_dispatch_handles_non_text():
     async def cb(chat_id, username, text):
         return "should not run"
 
-    await c._dispatch(None, {  # type: ignore[arg-type]
-        "chat": {"id": 9},
-        "from": {"username": "alice"},
-        # no text, no caption
-    }, cb)
+    await c._dispatch(
+        None,
+        {  # type: ignore[arg-type]
+            "chat": {"id": 9},
+            "from": {"username": "alice"},
+            # no text, no caption
+        },
+        cb,
+    )
 
     assert sent and "only handle text" in sent[-1][1]
 
@@ -174,6 +189,7 @@ async def test_dispatch_handles_non_text():
 @pytest.mark.asyncio
 async def test_health_probe_starting_then_ok():
     import time
+
     c = _client()
     probe = await c.health_probe()
     assert probe["status"] == "starting"

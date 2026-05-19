@@ -9,7 +9,6 @@ injection on the module-level ``_WORKSPACE_CLIENT`` singleton.
 from __future__ import annotations
 
 import json
-import os
 from types import SimpleNamespace
 
 import pytest
@@ -149,9 +148,7 @@ def test_serving_endpoint_status_requires_name():
 def test_serving_endpoint_status_returns_state(monkeypatch):
     state = SimpleNamespace(as_dict=lambda: {"ready": "READY"})
     cfg = SimpleNamespace(as_dict=lambda: {"name": "ep"})
-    ep = SimpleNamespace(
-        name="ep", state=state, config=cfg, last_updated_timestamp=12345
-    )
+    ep = SimpleNamespace(name="ep", state=state, config=cfg, last_updated_timestamp=12345)
     _set_client(monkeypatch, serving_endpoints=SimpleNamespace(get=lambda _: ep))
     raw = dts._h_serving_endpoint_status({"endpoint_name": "ep"})
     payload = json.loads(raw)

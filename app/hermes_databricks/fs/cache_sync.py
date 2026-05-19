@@ -8,10 +8,8 @@ This lives next to ``UCVolumeHome`` so that callers don't import
 from __future__ import annotations
 
 import logging
-from typing import Optional
 
 from hermes_databricks.fs.volume_fs import UCVolumeHome
-
 
 log = logging.getLogger("hermes_databricks.fs.cache_sync")
 
@@ -21,7 +19,7 @@ class CacheSync:
 
     def __init__(self, home: UCVolumeHome) -> None:
         self.home = home
-        self._last_result: Optional[dict] = None
+        self._last_result: dict | None = None
 
     def sync_now(self, *, only_durable: bool = True) -> dict:
         self._last_result = self.home.sync_to_volume(only_durable=only_durable)

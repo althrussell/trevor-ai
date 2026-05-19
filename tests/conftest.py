@@ -9,7 +9,6 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
-
 _REPO = Path(__file__).resolve().parent.parent
 _APP_SRC = _REPO / "app"
 
