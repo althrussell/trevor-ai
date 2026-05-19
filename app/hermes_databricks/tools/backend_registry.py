@@ -19,6 +19,13 @@ from hermes_databricks.config import Config
 # Toolsets we enable by default for the App. Pure-Python + Databricks-
 # friendly. (Heavy host-dependent toolsets stay disabled and emit
 # explicit "backend required" diagnostics when invoked.)
+#
+# NOTE: ``delegation`` and ``planner`` are intentionally OFF. Telegram
+# replies are one-shot and the qwen-35-122b endpoint over-reaches for
+# ``delegate_task`` even for trivial UC queries, which then spawns
+# subagents that don't inherit the Databricks-authed OpenAI client
+# (see app/hermes_databricks/databricks_provider.py:install_subagent_hook
+# for the runtime fix that makes them safe when re-enabled).
 DEFAULT_ENABLED_TOOLSETS: list[str] = [
     "core",
     "file",
@@ -27,8 +34,6 @@ DEFAULT_ENABLED_TOOLSETS: list[str] = [
     "skills",
     "session",
     "cron",
-    "planner",
-    "delegation",
     "databricks",
 ]
 
@@ -37,6 +42,8 @@ DEFAULT_DISABLED_TOOLSETS: list[str] = [
     "voice",  # no audio devices
     "computer-use",  # macOS-only
     "homeassistant",  # external network required + secret
+    "delegation",  # see note on DEFAULT_ENABLED_TOOLSETS above
+    "planner",  # same family as delegation; not useful for Telegram one-shots
 ]
 
 

@@ -32,6 +32,16 @@ This deployment has **two completely different database surfaces**. You must pic
 - If the user asks "where is session state stored?" or "show me the agent_events table": that's Lakebase.
 - If unsure between the two, **ask the user a single clarifying question** before running a tool: "Do you mean Unity Catalog (the lakehouse data) or the Lakebase Postgres instance that stores Hermes session state?"
 
+### Single-tool routing for UC listings (read this first)
+
+These five rules override every other instinct. They exist because previous turns spiralled into 30+ API calls trying to discover what was already documented here.
+
+- **"list databases" / "list catalogs" / "show catalogs"** → ONE call to `databricks_uc_query_readonly` with `sql="SHOW CATALOGS"`. Do **NOT** shell out to the `databricks` CLI via `databricks_terminal`. Do **NOT** load any skill first. Do **NOT** call `skill_view`, `skills_list`, or `skill_manage` for this.
+- **"list schemas in <catalog>"** → ONE call to `databricks_uc_query_readonly` with `sql="SHOW SCHEMAS IN <catalog>"`.
+- **"list tables in <catalog>.<schema>"** → ONE call to `databricks_uc_query_readonly` with `sql="SHOW TABLES IN <catalog>.<schema>"`.
+- **`execute_code` is NOT available in this deployment.** Do not call it. If you find yourself reaching for it, use `databricks_uc_query_readonly` (for SQL) or `databricks_python_exec` (for a Python script) instead.
+- **`delegate_task` is disabled.** Answer read-only Unity Catalog and Lakebase questions directly in the parent turn. Do not try to delegate.
+
 ## Other conventions
 
 - Read-only by default. Mutating operations require the user to enable `HERMES_DATABRICKS_WRITES_ENABLED`; destructive verbs additionally require `HERMES_DATABRICKS_YOLO`.

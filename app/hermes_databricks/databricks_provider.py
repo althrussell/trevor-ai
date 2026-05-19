@@ -133,6 +133,11 @@ class DatabricksOpenAIClientFactory:
         # "stream not supported".
         agent._disable_streaming = True
 
+        # Mark this agent so the subagent hook can detect already-wired
+        # instances (the parent goes through this path explicitly during
+        # bootstrap; children flow through the hook installed below).
+        agent._databricks_applied = True
+
         log.info(
             "Databricks OpenAI client applied to AIAgent (streaming disabled, fresh bearer)",
             extra={
@@ -143,6 +148,93 @@ class DatabricksOpenAIClientFactory:
                 }
             },
         )
+
+    # -------------------- subagent hook --------------------
+
+    def install_subagent_hook(self) -> bool:
+        """Patch ``AIAgent.__init__`` so any fresh subagent inherits Databricks overrides.
+
+        ``tools/delegate_tool._build_child_agent`` constructs a brand-new
+        ``AIAgent(...)`` whose ``provider`` and ``model`` are inherited
+        from the parent — but it never re-runs our ``apply_to_agent``
+        step. Without this hook, the subagent:
+
+          * keeps ``_disable_streaming = False`` (default), so it goes
+            through Hermes' SSE streaming path. Databricks Foundation
+            Model serving's stream shape then crashes Hermes' partial
+            accumulator with ``sequence item 0: expected str instance,
+            list found`` and the child's turn returns ``(empty)``.
+          * builds its own ``OpenAI()`` client from the inherited
+            ``api_key`` / ``base_url``, skipping the Databricks SDK's
+            ``httpx.Auth`` flow — so the bearer never refreshes for the
+            life of the subagent (rarely matters for short tasks, but
+            it's a latent staleness bug).
+
+        This hook calls ``apply_to_agent`` on every newly-constructed
+        ``AIAgent`` whose provider is ``"databricks"``, unless the agent
+        already carries the ``_databricks_applied`` sentinel (set by
+        ``apply_to_agent`` itself, so re-application is a no-op).
+
+        Idempotent: a class-level marker prevents double-patching when
+        ``_init_hermes`` is called more than once (e.g. on retry).
+        Returns ``True`` if the hook was installed (or was already
+        installed), ``False`` if AIAgent is not importable.
+        """
+        try:
+            from run_agent import AIAgent  # type: ignore
+        except Exception:
+            log.debug(
+                "AIAgent not importable; subagent hook not installed",
+                exc_info=True,
+            )
+            return False
+
+        original_init = getattr(AIAgent, "__init__", None)
+        if original_init is None:
+            log.warning("AIAgent has no __init__; subagent hook not installed")
+            return False
+        if getattr(original_init, "_hermes_databricks_subagent_hook", False):
+            return True  # already installed by an earlier bootstrap
+
+        factory = self
+
+        def init_with_databricks_hook(agent_self, *args, **kwargs):  # type: ignore[no-untyped-def]
+            original_init(agent_self, *args, **kwargs)
+            # Only re-wire children that resolve to our Databricks provider.
+            # The parent path explicitly calls apply_to_agent during
+            # bootstrap and sets _databricks_applied=True, so re-entry
+            # here is harmless but skipped to avoid a redundant bearer
+            # refresh log line on every parent construction.
+            if getattr(agent_self, "_databricks_applied", False):
+                return
+            provider = (getattr(agent_self, "provider", "") or "").lower()
+            if provider != "databricks":
+                return
+            try:
+                factory.apply_to_agent(agent_self)
+                log.info(
+                    "Subagent re-wired with Databricks overrides via init hook "
+                    "(model=%s, log_prefix=%s)",
+                    getattr(agent_self, "model", "?"),
+                    getattr(agent_self, "log_prefix", "") or "",
+                )
+            except Exception:
+                log.exception(
+                    "Subagent Databricks re-wiring failed; "
+                    "child will run with default OpenAI client and may stream"
+                )
+
+        init_with_databricks_hook._hermes_databricks_subagent_hook = True  # type: ignore[attr-defined]
+        try:
+            AIAgent.__init__ = init_with_databricks_hook  # type: ignore[method-assign]
+            log.info(
+                "Installed Databricks subagent hook on AIAgent.__init__ "
+                "(children inherit _disable_streaming + fresh bearer)"
+            )
+            return True
+        except Exception:
+            log.exception("Failed to install AIAgent.__init__ subagent hook")
+            return False
 
     def _fresh_bearer_token(self) -> str | None:
         """Mint a fresh Databricks bearer token via the SDK auth flow.
@@ -222,8 +314,9 @@ class DatabricksOpenAIClientFactory:
         # is stricter than vanilla OpenAI. We sanitise outbound requests
         # in Python (before the SDK serialises them) to fix:
         #   - stream_options (Hermes always sends include_usage)
-        #   - integer JSON-schema constraints in tool definitions
-        # Both surfaces are described in detail in
+        #   - integer/array JSON-schema constraints in tool definitions
+        #   - underscore-prefixed Hermes-internal message keys
+        # All surfaces are described in detail in
         # ``_install_request_sanitiser`` below.
         _install_request_sanitiser(oai)
         return oai
@@ -249,11 +342,16 @@ def _extract_httpx_client(oai: Any) -> Any:
 #      streaming chat-completion request. Databricks responds with
 #      ``400 BAD_REQUEST: json: unknown field "stream_options"``.
 #
-#   2. Hermes' tool-registry JSON schemas use ``minimum`` / ``maximum``
-#      / ``exclusiveMinimum`` / ``exclusiveMaximum`` / ``multipleOf``
-#      on integer-typed parameters. Databricks responds with
-#      ``400 BAD_REQUEST: Invalid JSON schema - integer types do not
-#      support minimum``.
+#   2. Hermes' tool-registry JSON schemas use type-specific constraint
+#      keywords that Databricks' validator rejects entirely:
+#
+#        * integer / number — ``minimum`` / ``maximum`` /
+#          ``exclusiveMinimum`` / ``exclusiveMaximum`` / ``multipleOf``
+#          → ``Invalid JSON schema - integer types do not support minimum``
+#
+#        * array — ``maxItems`` / ``minItems`` / ``uniqueItems`` /
+#          ``maxContains`` / ``minContains``
+#          → ``Invalid JSON schema - array types do not support maxItems``
 #
 # We wrap the OpenAI client's ``chat.completions.create`` method so
 # kwargs are sanitised *before* the SDK serialises them into an httpx
@@ -263,25 +361,71 @@ def _extract_httpx_client(oai: Any) -> Any:
 # the OpenAI SDK — wrapping the high-level method is more robust.)
 
 
-def _scrub_integer_schema_constraints(node: Any) -> int:
-    """Recursively drop integer-only JSON-Schema constraints in-place."""
+# Per-type constraint keywords that Databricks Model Serving's
+# JSON-Schema validator refuses. Add new entries only when a new
+# ``Invalid JSON schema - <T> types do not support <K>`` 400 is
+# observed in production logs.
+_FORBIDDEN_SCHEMA_KEYS_BY_TYPE: dict[str, tuple[str, ...]] = {
+    "integer": (
+        "minimum",
+        "maximum",
+        "exclusiveMinimum",
+        "exclusiveMaximum",
+        "multipleOf",
+    ),
+    "array": (
+        "maxItems",
+        "minItems",
+        "uniqueItems",
+        "maxContains",
+        "minContains",
+    ),
+}
+
+
+def _node_has_type(node: dict[str, Any], type_name: str) -> bool:
+    """Return True if a JSON-Schema node's ``type`` field includes *type_name*.
+
+    Handles both the scalar form (``"type": "integer"``) and the
+    nullable-union form (``"type": ["integer", "null"]``) that pydantic
+    emits for ``Optional[int]`` fields.
+    """
+    node_type = node.get("type")
+    if node_type == type_name:
+        return True
+    return isinstance(node_type, list) and type_name in node_type
+
+
+def _scrub_unsupported_schema_constraints(node: Any) -> int:
+    """Recursively drop type-specific JSON-Schema keywords Databricks rejects.
+
+    Walks dicts and lists in-place; returns the count of keys removed.
+    This is the union of every constraint that has tripped a
+    ``400 BAD_REQUEST: Invalid JSON schema`` from Databricks Foundation
+    Model serving — see ``_FORBIDDEN_SCHEMA_KEYS_BY_TYPE`` for the
+    current set and the comment block above for the failure modes that
+    motivated each entry.
+    """
     removed = 0
     if isinstance(node, dict):
-        node_type = node.get("type")
-        is_integer = node_type == "integer" or (
-            isinstance(node_type, list) and "integer" in node_type
-        )
-        if is_integer:
-            for k in ("minimum", "maximum", "exclusiveMinimum", "exclusiveMaximum", "multipleOf"):
-                if k in node:
-                    node.pop(k, None)
+        for type_name, forbidden_keys in _FORBIDDEN_SCHEMA_KEYS_BY_TYPE.items():
+            if not _node_has_type(node, type_name):
+                continue
+            for key in forbidden_keys:
+                if key in node:
+                    node.pop(key, None)
                     removed += 1
         for v in list(node.values()):
-            removed += _scrub_integer_schema_constraints(v)
+            removed += _scrub_unsupported_schema_constraints(v)
     elif isinstance(node, list):
         for item in node:
-            removed += _scrub_integer_schema_constraints(item)
+            removed += _scrub_unsupported_schema_constraints(item)
     return removed
+
+
+# Legacy alias preserved for any downstream import of the integer-only
+# scrubber. New code should call ``_scrub_unsupported_schema_constraints``.
+_scrub_integer_schema_constraints = _scrub_unsupported_schema_constraints
 
 
 def _scrub_internal_message_fields(
@@ -346,10 +490,11 @@ def _sanitise_oai_kwargs(kwargs: dict[str, Any]) -> dict[str, Any]:
 
         kwargs = dict(kwargs)
         kwargs["tools"] = copy.deepcopy(tools)
-        removed = _scrub_integer_schema_constraints(kwargs["tools"])
+        removed = _scrub_unsupported_schema_constraints(kwargs["tools"])
         if removed:
             log.debug(
-                "Stripped %d integer-schema constraint(s) from %d tool definition(s)",
+                "Stripped %d unsupported JSON-schema constraint(s) "
+                "(integer/array keywords) from %d tool definition(s)",
                 removed,
                 len(kwargs["tools"]),
             )
@@ -396,7 +541,7 @@ def _install_request_sanitiser(oai_client: Any) -> None:
         log.info(
             "Installed Databricks request sanitiser on "
             "openai.resources.chat.completions.Completions.create "
-            "(strips stream_options + integer-schema constraints "
+            "(strips stream_options + integer/array schema constraints "
             "+ underscore-prefixed message keys)"
         )
     except Exception:

@@ -87,13 +87,25 @@ class HermesRuntime:
                 self.errors["uc_volume_skill_seed"] = "see logs"
 
             # Seed top-level HERMES_HOME files (soul.md, etc.) shipped
-            # under ``app/seeds/home/``. Idempotent: existing files are
-            # left alone so the operator can edit them via the volume.
+            # under ``app/seeds/home/``.
+            #
+            # ``soul.md`` is the system prompt and is treated as a code
+            # artifact — it lives in git, ships with the bundle, and
+            # must always reflect the bundled copy on the next boot
+            # after a redeploy. We force-overwrite that file. Every
+            # other ``seeds/home/*`` file keeps the "seed if missing"
+            # semantics so an operator can edit ``MEMORY.md`` or
+            # ``config.yaml`` overrides on the volume without them being
+            # clobbered.
             try:
                 home_seed_root = _Path(__file__).resolve().parent.parent / "seeds" / "home"
                 if home_seed_root.exists():
+                    force_overwrite = {"soul.md"}
                     for seed_file in sorted(p for p in home_seed_root.iterdir() if p.is_file()):
-                        result = self.home_fs.seed_file_if_missing(seed_file, seed_file.name)
+                        if seed_file.name in force_overwrite:
+                            result = self.home_fs.seed_file_force(seed_file, seed_file.name)
+                        else:
+                            result = self.home_fs.seed_file_if_missing(seed_file, seed_file.name)
                         log.info("HERMES_HOME file seed pass", extra={"extras": result})
             except Exception:
                 log.exception("HERMES_HOME root file seed failed (continuing)")
@@ -232,6 +244,20 @@ class HermesRuntime:
             except Exception:
                 log.exception("Failed to apply Databricks provider to AIAgent")
                 self.errors["model_provider_apply"] = "see logs"
+
+            # 6b. Install the AIAgent.__init__ hook so any subagent
+            # spawned by ``delegate_task`` re-runs ``apply_to_agent``
+            # automatically. Without this, child agents stream against
+            # Databricks Foundation Model serving (Hermes' SSE
+            # accumulator crashes) and return ``(empty)`` after 3
+            # retries — see the "list databases" 38-call spiral
+            # post-mortem. Idempotent: the hook is class-level and
+            # self-marked.
+            try:
+                self.provider.install_subagent_hook()
+            except Exception:
+                log.exception("Failed to install Databricks subagent hook")
+                self.errors["model_provider_subagent_hook"] = "see logs"
 
         # 7. Phase 7: register the Databricks-native toolset.
         try:

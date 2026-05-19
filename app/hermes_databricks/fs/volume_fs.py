@@ -383,6 +383,10 @@ class UCVolumeHome:
         ``soul.md``, ``config.yaml``) that don't fit the per-skill
         directory pattern. Idempotent: a second call is a no-op once
         the destination exists.
+
+        For files that ship with the bundle and should always reflect
+        the bundle's copy (the system prompt is one — operators don't
+        edit it live), use :meth:`seed_file_force` instead.
         """
         seed_file = Path(seed_file)
         result: dict[str, Any] = {
@@ -434,6 +438,100 @@ class UCVolumeHome:
                 except Exception:
                     log.exception(
                         "seed_file_if_missing: push to volume failed for %s", target_subpath
+                    )
+                    result["pushed"] = {"ok": False, "reason": "push_failed"}
+
+        return result
+
+    def seed_file_force(
+        self,
+        seed_file: Path,
+        target_subpath: str,
+        *,
+        push: bool = True,
+    ) -> dict[str, Any]:
+        """Copy ``seed_file`` into ``<HERMES_HOME>/<target_subpath>``, overwriting.
+
+        Used for files that ship with the bundle and must always reflect
+        the bundled copy after a redeploy — primarily ``soul.md`` (the
+        system prompt). Without this, ``seed_file_if_missing`` short-
+        circuits on every boot after the first and stale prompts persist
+        in the UC volume mirror across deploys.
+
+        Returns the same shape as :meth:`seed_file_if_missing`. The
+        ``overwritten`` field is ``True`` if the target already existed
+        and was replaced (the common case after the first deploy); the
+        ``bytes_changed`` field reports whether the on-disk content was
+        actually different — useful for surfacing meaningful boot-time
+        diagnostics ("nothing to do" vs. "soul prompt updated").
+        """
+        seed_file = Path(seed_file)
+        result: dict[str, Any] = {
+            "target_subpath": target_subpath,
+            "seed_file": str(seed_file),
+            "seeded": False,
+            "overwritten": False,
+            "bytes_changed": False,
+            "bytes_copied": 0,
+            "skipped_reason": None,
+        }
+
+        if not seed_file.exists() or not seed_file.is_file():
+            result["skipped_reason"] = "seed_file_missing"
+            return result
+
+        try:
+            local_target = self._resolve_local(target_subpath)
+        except ValueError as exc:
+            result["skipped_reason"] = f"invalid_target: {exc}"
+            return result
+
+        with self._lock:
+            local_target.parent.mkdir(parents=True, exist_ok=True)
+            try:
+                data = seed_file.read_bytes()
+            except OSError as exc:
+                result["skipped_reason"] = f"read_failed: {exc}"
+                return result
+
+            previous_data: bytes | None = None
+            if local_target.exists() and local_target.is_file():
+                try:
+                    previous_data = local_target.read_bytes()
+                except OSError:
+                    previous_data = None
+                result["overwritten"] = True
+
+            if previous_data == data:
+                result["seeded"] = True
+                result["bytes_copied"] = len(data)
+                result["bytes_changed"] = False
+                # Identical content; skip the disk write and the push,
+                # but still report success so the caller can log it.
+                return result
+
+            local_target.write_bytes(data)
+            result["seeded"] = True
+            result["bytes_copied"] = len(data)
+            result["bytes_changed"] = True
+            log.info(
+                "force-seeded HERMES_HOME file (bundle copy wins)",
+                extra={
+                    "extras": {
+                        "target_subpath": target_subpath,
+                        "overwritten": result["overwritten"],
+                        "bytes_copied": result["bytes_copied"],
+                    }
+                },
+            )
+
+            if push and self._is_durable(target_subpath):
+                try:
+                    push_result = self.touch_subpath(target_subpath)
+                    result["pushed"] = push_result
+                except Exception:
+                    log.exception(
+                        "seed_file_force: push to volume failed for %s", target_subpath
                     )
                     result["pushed"] = {"ok": False, "reason": "push_failed"}
 

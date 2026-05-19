@@ -226,6 +226,13 @@ def main() -> int:
         assert_("databricks" in enabled, "databricks toolset enabled by default")
         # Default browser_backend is 'disabled' → browser toolset disabled
         assert_("browser" in disabled, "browser toolset disabled by default")
+        # delegation/planner are intentionally OFF — see post-mortem on the
+        # "list databases" 38-call spiral (subagents stream against
+        # Databricks and crash Hermes' SSE accumulator).
+        assert_("delegation" not in enabled, "delegation toolset NOT enabled by default")
+        assert_("delegation" in disabled, "delegation toolset explicitly disabled")
+        assert_("planner" not in enabled, "planner toolset NOT enabled by default")
+        assert_("planner" in disabled, "planner toolset explicitly disabled")
         snap = describe_backends(cfg)
         assert_(snap["backends"]["terminal"]["available"] is True, "terminal backend available")
         assert_(snap["backends"]["browser"]["available"] is False, "browser backend unavailable")

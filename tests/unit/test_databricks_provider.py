@@ -191,6 +191,177 @@ def test_sanitise_strips_integer_schema_constraints_in_array_type():
 
 
 # ---------------------------------------------------------------------
+# _sanitise_oai_kwargs — array-schema-constraint strip
+# ---------------------------------------------------------------------
+#
+# Motivated by the production 400 observed in the post-turn skill-review
+# background agent on 2026-05-19:
+#   ``Invalid JSON schema - array types do not support maxItems``
+# Hermes' tool registry ships array-typed parameters with maxItems /
+# minItems / uniqueItems constraints. Databricks rejects all of them.
+
+
+def test_sanitise_strips_array_schema_constraints():
+    """Array-typed tool parameters must lose ``maxItems``/``minItems``/etc."""
+    tool = {
+        "type": "function",
+        "function": {
+            "name": "search",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "tags": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "maxItems": 10,
+                        "minItems": 1,
+                        "uniqueItems": True,
+                        "maxContains": 5,
+                        "minContains": 1,
+                    },
+                    "query": {"type": "string"},
+                },
+            },
+        },
+    }
+    out = dp._sanitise_oai_kwargs(
+        {"model": "x", "messages": [{"role": "user", "content": "go"}], "tools": [tool]}
+    )
+
+    cleaned_tags = out["tools"][0]["function"]["parameters"]["properties"]["tags"]
+    for k in ("maxItems", "minItems", "uniqueItems", "maxContains", "minContains"):
+        assert k not in cleaned_tags, f"{k!r} should have been stripped from array type"
+    # Non-constraint fields on the array node survive.
+    assert cleaned_tags["type"] == "array"
+    assert cleaned_tags["items"] == {"type": "string"}
+    # Sibling string property untouched.
+    assert out["tools"][0]["function"]["parameters"]["properties"]["query"] == {
+        "type": "string"
+    }
+    # Caller tool dict untouched.
+    assert tool["function"]["parameters"]["properties"]["tags"]["maxItems"] == 10
+
+
+def test_sanitise_strips_array_schema_constraints_in_type_union():
+    """``type: ["array", "null"]`` counts as array for the strip."""
+    tool = {
+        "type": "function",
+        "function": {
+            "name": "x",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "tags": {
+                        "type": ["array", "null"],
+                        "items": {"type": "string"},
+                        "maxItems": 3,
+                    },
+                },
+            },
+        },
+    }
+    out = dp._sanitise_oai_kwargs(
+        {"model": "x", "messages": [{"role": "user", "content": "go"}], "tools": [tool]}
+    )
+    cleaned = out["tools"][0]["function"]["parameters"]["properties"]["tags"]
+    assert "maxItems" not in cleaned
+    assert cleaned["type"] == ["array", "null"]
+    assert cleaned["items"] == {"type": "string"}
+
+
+def test_sanitise_does_not_strip_constraints_from_wrong_type():
+    """Don't strip ``maxItems`` from a non-array node, even if the key exists.
+
+    Real tool schemas should never put ``maxItems`` on a non-array node,
+    but the recursive walk must be type-scoped — otherwise we'd start
+    silently mutating schema keywords the validator does accept on other
+    types, which would be much harder to debug than a 400.
+    """
+    tool = {
+        "type": "function",
+        "function": {
+            "name": "x",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "weird": {
+                        "type": "string",
+                        # Not legal on string per the JSON-Schema spec, but
+                        # the sanitiser is not a schema validator; it
+                        # narrowly removes only what triggers Databricks
+                        # 400s and only on the types those 400s name.
+                        "maxItems": 1,
+                    },
+                },
+            },
+        },
+    }
+    out = dp._sanitise_oai_kwargs(
+        {"model": "x", "messages": [{"role": "user", "content": "go"}], "tools": [tool]}
+    )
+    cleaned_weird = out["tools"][0]["function"]["parameters"]["properties"]["weird"]
+    assert cleaned_weird["maxItems"] == 1
+
+
+def test_sanitise_strips_nested_array_and_integer_in_one_pass():
+    """A schema that mixes both forbidden families must be cleaned in one walk."""
+    tool = {
+        "type": "function",
+        "function": {
+            "name": "page",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "n": {"type": "integer", "minimum": 1, "maximum": 100},
+                    "tags": {
+                        "type": "array",
+                        "items": {
+                            "type": "integer",
+                            "minimum": 0,
+                        },
+                        "maxItems": 5,
+                    },
+                },
+            },
+        },
+    }
+    out = dp._sanitise_oai_kwargs(
+        {"model": "x", "messages": [{"role": "user", "content": "go"}], "tools": [tool]}
+    )
+    props = out["tools"][0]["function"]["parameters"]["properties"]
+    assert "minimum" not in props["n"]
+    assert "maximum" not in props["n"]
+    assert "maxItems" not in props["tags"]
+    # Items-recursion: nested integer constraint must also be gone.
+    assert "minimum" not in props["tags"]["items"]
+
+
+def test_scrub_helper_returns_total_removed_count():
+    """``_scrub_unsupported_schema_constraints`` must report how many keys were
+    removed, so the debug log line can stay informative.
+    """
+    schema = {
+        "type": "object",
+        "properties": {
+            "a": {"type": "integer", "minimum": 1, "maximum": 2, "multipleOf": 3},
+            "b": {"type": "array", "items": {"type": "string"}, "maxItems": 5},
+        },
+    }
+    removed = dp._scrub_unsupported_schema_constraints(schema)
+    assert removed == 4  # minimum, maximum, multipleOf, maxItems
+
+
+def test_legacy_scrub_alias_still_works():
+    """``_scrub_integer_schema_constraints`` is aliased to the unified scrubber
+    for backwards compatibility with any downstream import path. Drop this
+    test when the alias is removed (no callers remain in-repo today)."""
+    assert (
+        dp._scrub_integer_schema_constraints
+        is dp._scrub_unsupported_schema_constraints
+    )
+
+
+# ---------------------------------------------------------------------
 # _install_request_sanitiser — class patch contract
 # ---------------------------------------------------------------------
 
@@ -251,3 +422,195 @@ def test_installed_sanitiser_actually_strips_outbound_kwargs(fake_openai_complet
     assert "stream_options" not in sent
     assert "_empty_recovery_synthetic" not in sent["messages"][0]
     assert sent["messages"][0]["content"] == "hi"
+
+
+# ---------------------------------------------------------------------
+# apply_to_agent — flips _disable_streaming and the Databricks sentinel
+# ---------------------------------------------------------------------
+
+
+class _FakeAgent:
+    """Minimal stand-in for AIAgent. Owns only the attributes apply_to_agent touches."""
+
+    def __init__(self, provider: str = "databricks") -> None:
+        self.provider = provider
+        self.model = "placeholder"
+        self.base_url = "https://placeholder.invalid/v1"
+        self.api_key = "placeholder"
+        self.client = None  # type: ignore[assignment]
+        self._client_kwargs: dict[str, Any] = {}
+        self._disable_streaming = False
+        self.log_prefix = ""
+
+
+class _FakeWorkspace:
+    """Stand-in for ``WorkspaceClient`` returning a controllable OpenAI fake."""
+
+    def __init__(self, base_url: str = "https://dbc-test.cloud.databricks.com/serving-endpoints"):
+        self.config = SimpleNamespace(
+            authenticate=lambda: {"Authorization": "Bearer dapi-FAKE-TOKEN"}
+        )
+        self._oai = SimpleNamespace(base_url=base_url, _client=SimpleNamespace())
+        self.serving_endpoints = SimpleNamespace(get_open_ai_client=lambda: self._oai)
+
+
+def test_apply_to_agent_marks_agent_and_disables_streaming(fake_openai_completions):
+    """``apply_to_agent`` must flip ``_disable_streaming`` and the sentinel."""
+    factory = dp.DatabricksOpenAIClientFactory(
+        endpoint="databricks-test",
+        workspace_factory=_FakeWorkspace,
+    )
+    agent = _FakeAgent()
+    factory.apply_to_agent(agent)
+
+    assert agent._disable_streaming is True
+    assert getattr(agent, "_databricks_applied", False) is True
+    assert agent.model == "databricks-test"
+    assert agent.base_url and "serving-endpoints" in agent.base_url
+    assert agent.api_key == "dapi-FAKE-TOKEN"
+    assert agent._client_kwargs["base_url"] == agent.base_url
+    assert agent._client_kwargs["api_key"] == "dapi-FAKE-TOKEN"
+
+
+# ---------------------------------------------------------------------
+# install_subagent_hook — patches AIAgent.__init__ so children inherit
+# ---------------------------------------------------------------------
+
+
+def test_install_subagent_hook_re_applies_to_fresh_databricks_agents(
+    fake_openai_completions, monkeypatch
+):
+    """A fresh ``AIAgent(provider='databricks', ...)`` must get our overrides."""
+
+    # Replace ``run_agent.AIAgent`` with a fake class so the hook has
+    # something to patch without dragging the real (heavy) AIAgent in.
+    class FakeAIAgent:
+        def __init__(self, *, provider: str = "databricks", model: str = "any-model"):
+            self.provider = provider
+            self.model = model
+            self.base_url = "https://placeholder.invalid/v1"
+            self.api_key = "placeholder"
+            self.client = None
+            self._client_kwargs: dict[str, Any] = {}
+            self._disable_streaming = False
+            self.log_prefix = ""
+
+    fake_run_agent = SimpleNamespace(AIAgent=FakeAIAgent)
+    monkeypatch.setitem(__import__("sys").modules, "run_agent", fake_run_agent)
+
+    factory = dp.DatabricksOpenAIClientFactory(
+        endpoint="databricks-test",
+        workspace_factory=_FakeWorkspace,
+    )
+
+    assert factory.install_subagent_hook() is True
+
+    # Construct a "subagent" — the hook should run apply_to_agent for us.
+    child = FakeAIAgent(provider="databricks", model="any-model")
+    assert child._disable_streaming is True
+    assert child._databricks_applied is True
+    assert child.api_key == "dapi-FAKE-TOKEN"
+    assert "serving-endpoints" in (child.base_url or "")
+
+
+def test_install_subagent_hook_skips_non_databricks_children(
+    fake_openai_completions, monkeypatch
+):
+    """Children whose provider isn't 'databricks' must be left alone."""
+
+    class FakeAIAgent:
+        def __init__(self, *, provider: str = "openrouter"):
+            self.provider = provider
+            self.model = "x"
+            self.base_url = "https://other.invalid"
+            self.api_key = "other-key"
+            self.client = None
+            self._client_kwargs: dict[str, Any] = {}
+            self._disable_streaming = False
+            self.log_prefix = ""
+
+    fake_run_agent = SimpleNamespace(AIAgent=FakeAIAgent)
+    monkeypatch.setitem(__import__("sys").modules, "run_agent", fake_run_agent)
+
+    factory = dp.DatabricksOpenAIClientFactory(
+        endpoint="databricks-test",
+        workspace_factory=_FakeWorkspace,
+    )
+    factory.install_subagent_hook()
+
+    child = FakeAIAgent(provider="openrouter")
+    assert child._disable_streaming is False
+    assert getattr(child, "_databricks_applied", False) is False
+    assert child.api_key == "other-key"
+    assert child.base_url == "https://other.invalid"
+
+
+def test_install_subagent_hook_is_idempotent(fake_openai_completions, monkeypatch):
+    """Second install on the same AIAgent class must be a no-op (no double-wrap)."""
+
+    class FakeAIAgent:
+        def __init__(self, *, provider: str = "databricks"):
+            self.provider = provider
+            self.model = "x"
+            self.base_url = "x"
+            self.api_key = "x"
+            self.client = None
+            self._client_kwargs: dict[str, Any] = {}
+            self._disable_streaming = False
+            self.log_prefix = ""
+
+    fake_run_agent = SimpleNamespace(AIAgent=FakeAIAgent)
+    monkeypatch.setitem(__import__("sys").modules, "run_agent", fake_run_agent)
+
+    factory = dp.DatabricksOpenAIClientFactory(
+        endpoint="databricks-test",
+        workspace_factory=_FakeWorkspace,
+    )
+
+    assert factory.install_subagent_hook() is True
+    first_init = FakeAIAgent.__init__
+    assert getattr(first_init, "_hermes_databricks_subagent_hook", False) is True
+
+    assert factory.install_subagent_hook() is True
+    second_init = FakeAIAgent.__init__
+    assert second_init is first_init  # not re-wrapped
+
+
+def test_install_subagent_hook_skips_already_applied_agents(
+    fake_openai_completions, monkeypatch
+):
+    """If __init__ leaves _databricks_applied=True (parent path), don't double-apply."""
+
+    apply_calls: list[Any] = []
+
+    class FakeAIAgent:
+        def __init__(self, *, provider: str = "databricks"):
+            self.provider = provider
+            self.model = "x"
+            self.base_url = "x"
+            self.api_key = "x"
+            self.client = None
+            self._client_kwargs: dict[str, Any] = {}
+            self._disable_streaming = False
+            self._databricks_applied = True  # simulate parent's explicit wiring
+            self.log_prefix = ""
+
+    fake_run_agent = SimpleNamespace(AIAgent=FakeAIAgent)
+    monkeypatch.setitem(__import__("sys").modules, "run_agent", fake_run_agent)
+
+    factory = dp.DatabricksOpenAIClientFactory(
+        endpoint="databricks-test",
+        workspace_factory=_FakeWorkspace,
+    )
+
+    original_apply = factory.apply_to_agent
+
+    def tracked_apply(agent):
+        apply_calls.append(agent)
+        return original_apply(agent)
+
+    monkeypatch.setattr(factory, "apply_to_agent", tracked_apply)
+    factory.install_subagent_hook()
+
+    FakeAIAgent(provider="databricks")
+    assert apply_calls == []  # never re-applied
