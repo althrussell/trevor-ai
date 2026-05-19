@@ -381,6 +381,40 @@ class UCVolumeHome:
             out.append((self.local_root / sub))
         return out
 
+    def touch_subpath(self, subpath: str) -> Dict[str, Any]:
+        """Upload everything under ``subpath`` (relative to HERMES_HOME) now.
+
+        Used by the cron scheduler after every tick to push
+        ``cron/jobs.json`` (and its ``output/`` siblings) to the
+        durable volume mirror — otherwise the next App restart would
+        forget ``next_run_at`` advances and re-run jobs.
+        """
+        try:
+            local = self._resolve_local(subpath)
+        except ValueError as exc:
+            return {"ok": False, "reason": str(exc)}
+        uploaded = 0
+        bytes_uploaded = 0
+        if local.exists():
+            if local.is_file():
+                try:
+                    self._upload_one(subpath)
+                    uploaded += 1
+                    bytes_uploaded += local.stat().st_size
+                except Exception:
+                    log.exception("touch_subpath upload failed for %s", subpath)
+            else:
+                for entry in local.rglob("*"):
+                    if entry.is_file():
+                        try:
+                            rel = str(entry.relative_to(self.local_root))
+                            self._upload_one(rel)
+                            uploaded += 1
+                            bytes_uploaded += entry.stat().st_size
+                        except Exception:
+                            log.exception("touch_subpath upload failed for %s", entry)
+        return {"ok": True, "uploaded": uploaded, "bytes": bytes_uploaded}
+
     def _upload_path(self, local_file: Path) -> None:
         rel = str(local_file.relative_to(self.local_root))
         if self._is_excluded(rel):

@@ -43,6 +43,10 @@ class HermesRuntime:
         self.agent = None  # hermes AIAgent (Phase 2)
         self.scheduler = None  # Hermes cron scheduler (Phase 8)
         self.cron_available: bool = False
+        self._cron_tick_count: int = 0
+        self._cron_last_tick_at: Optional[float] = None
+        self._cron_last_executed: int = 0
+        self._cron_last_error: Optional[str] = None
 
         # Error capture for diagnostics
         self.errors: Dict[str, str] = {}
@@ -394,20 +398,100 @@ class HermesRuntime:
             jobs = load_jobs()
         except Exception as exc:
             return {"available": True, "error": f"{type(exc).__name__}: {exc}", "jobs": []}
-        return {"available": True, "count": len(jobs), "jobs": jobs}
+
+        out: Dict[str, Any] = {
+            "available": True,
+            "count": len(jobs),
+            "jobs": jobs,
+            "tick_count": self._cron_tick_count,
+            "tick_last_at": self._cron_last_tick_at,
+            "tick_last_executed": self._cron_last_executed,
+            "tick_last_error": self._cron_last_error,
+        }
+        return out
+
+    def cron_tick(self) -> Dict[str, Any]:
+        """Run one cron scheduler tick. Idempotent; safe to call frequently.
+
+        Persists a ``cron_tick`` event to Lakebase regardless of how many
+        jobs actually ran, so the operator can audit liveness from
+        ``/debug/events``.
+        """
+        if not self.cron_available or self.scheduler is None:
+            return {"available": False}
+        executed = 0
+        err: Optional[str] = None
+        try:
+            executed = int(self.scheduler(verbose=False) or 0)
+        except Exception as exc:  # noqa: BLE001
+            log.exception("cron tick failed")
+            err = f"{type(exc).__name__}: {exc}"
+            self._cron_last_error = err
+
+        self._cron_tick_count += 1
+        self._cron_last_tick_at = time.time()
+        self._cron_last_executed = executed
+        if err is None:
+            self._cron_last_error = None
+
+        # Persist to Lakebase if available.
+        if self.session_db is not None:
+            try:
+                self.session_db.append_event(  # type: ignore[attr-defined]
+                    "cron_tick",
+                    {"executed": executed, "error": err},
+                )
+            except Exception:
+                log.exception("cron_tick event persist failed")
+
+        # Touch the cron subpath so the next heartbeat sync uploads
+        # any state mutations Hermes made (next_run_at advances, etc.).
+        if self.home_fs is not None:
+            try:
+                self.home_fs.touch_subpath("cron")  # type: ignore[attr-defined]
+            except Exception:
+                log.debug("home_fs.touch_subpath('cron') unavailable", exc_info=True)
+
+        return {"executed": executed, "error": err, "tick_count": self._cron_tick_count}
 
     def run_cron_job(self, job_id: str) -> Dict[str, Any]:
         if not self.cron_available:
             raise RuntimeError("Hermes cron scheduler unavailable")
         try:
-            from cron.jobs import load_jobs, run_job  # type: ignore
+            from cron.jobs import load_jobs  # type: ignore
+            from cron.scheduler import run_job  # type: ignore
         except Exception as exc:
             raise RuntimeError(f"cron API unavailable: {exc}") from exc
         jobs = {j.get("id"): j for j in load_jobs() if isinstance(j, dict)}
         if job_id not in jobs:
             raise KeyError(job_id)
         result = run_job(jobs[job_id])
-        return {"job_id": job_id, "result": result}
+
+        # Persist the run to Lakebase.
+        success, output, final_response, error = (
+            result if isinstance(result, tuple) and len(result) == 4 else (None, None, None, None)
+        )
+        if self.session_db is not None:
+            try:
+                self.session_db.append_event(  # type: ignore[attr-defined]
+                    "cron_run",
+                    {
+                        "job_id": job_id,
+                        "success": success,
+                        "error": error,
+                        "preview": (output or "")[:512] if isinstance(output, str) else None,
+                    },
+                )
+            except Exception:
+                log.exception("cron_run event persist failed")
+
+        return {
+            "job_id": job_id,
+            "success": success,
+            "output": output,
+            "final_response": final_response,
+            "error": error,
+        }
 
     # ------------------------------------------------------------------
     # Health probes
