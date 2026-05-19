@@ -1,35 +1,489 @@
-"""UC Volume-backed HERMES_HOME mirror (Phase 1 skeleton).
+"""UC Volume-backed HERMES_HOME mirror.
 
-The real implementation arrives in Phase 5.
+Databricks Apps do **not** mount UC Volumes as a POSIX filesystem. All
+I/O has to go through the Databricks SDK Files API. To preserve
+Hermes' assumption that ``HERMES_HOME`` is a regular directory, we run
+a two-layer model:
+
+* The **local cache** lives under ``cfg.hermes_home`` (default
+  ``/tmp/hermes_cache/hermes_home``). Hermes reads and writes here
+  normally — the cache is a real on-disk directory tree.
+
+* The **durable mirror** lives at
+  ``/Volumes/{catalog}/{schema}/{hermes_home_volume}``. The runtime
+  performs:
+    * ``sync_from_volume()`` on boot to hydrate the cache.
+    * ``sync_to_volume()`` periodically (driven by the supervisor's
+      heartbeat) and on shutdown.
+
+Only specific subpaths are considered durable. Ephemeral subpaths
+(``state.db`` for example — Lakebase is the source of truth) are
+**excluded** from upload but still readable in the cache.
+
+Security:
+
+* All paths are normalised relative to ``HERMES_HOME``.
+* Any attempt to escape (``..``, absolute path, drive letter, mixed
+  separators) raises ``ValueError``.
+* Volume-side paths are constrained to the configured volume prefix.
 """
 
 from __future__ import annotations
 
+import io
+import logging
+import os
+import threading
+import time
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Any, Dict, Iterable, List, Optional, Set
+
 from hermes_databricks.config import Config
 
 
-class UCVolumeHome:  # pragma: no cover - Phase 1 stub
+log = logging.getLogger("hermes_databricks.fs.volume_fs")
+
+
+# Subpaths whose contents the supervisor will upload after a write
+# and during periodic sync. Order matters only for clarity.
+DEFAULT_DURABLE_SUBPATHS: tuple = (
+    "skills",
+    "optional-skills",
+    "cron",
+    "memories",
+    "image_cache",
+    "audio_cache",
+    "mcp-tokens",
+    "hooks",
+    "pairing",
+    "logs/curator",
+    "config.yaml",
+    ".env",
+    "soul.md",
+    "MEMORY.md",
+    "processes.json",
+)
+
+# Subpaths we deliberately never upload (large, transient, or
+# represented elsewhere — e.g. state.db is replaced by Lakebase).
+EXCLUDE_FROM_UPLOAD: tuple = (
+    "state.db",
+    "state.db-wal",
+    "state.db-shm",
+    "kanban.db",
+    "tmp",
+    "sessions",  # informational JSON snapshots, but high churn
+    "logs/agent.log",
+    "logs/errors.log",
+    "logs/gateway.log",
+)
+
+# Max file size we'll mirror back to UC Volume (in MB). Avoids
+# accidentally uploading huge model caches.
+DEFAULT_MAX_FILE_MB = 10
+
+
+@dataclass
+class FileEntry:
+    name: str
+    relative_path: str
+    is_dir: bool
+    size: Optional[int] = None
+    modified_at: Optional[float] = None
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "name": self.name,
+            "relative_path": self.relative_path,
+            "is_dir": self.is_dir,
+            "size": self.size,
+            "modified_at": self.modified_at,
+        }
+
+
+class UCVolumeHome:
+    """Local cache + UC Volume mirror for HERMES_HOME."""
+
+    def __init__(
+        self,
+        local_root: Path,
+        volume_root: str,
+        *,
+        durable_subpaths: Iterable[str] = DEFAULT_DURABLE_SUBPATHS,
+        exclude: Iterable[str] = EXCLUDE_FROM_UPLOAD,
+        max_file_mb: int = DEFAULT_MAX_FILE_MB,
+        workspace_factory=None,
+    ) -> None:
+        self.local_root = Path(local_root).resolve()
+        if not volume_root.startswith("/Volumes/"):
+            raise ValueError(f"volume_root must start with /Volumes/, got {volume_root!r}")
+        self.volume_root = volume_root.rstrip("/")
+        self.durable_subpaths: Set[str] = {s.strip("/") for s in durable_subpaths if s}
+        self.exclude: Set[str] = {s.strip("/") for s in exclude if s}
+        self.max_file_bytes = max_file_mb * 1024 * 1024
+        self._workspace_factory = workspace_factory
+        self._workspace: Any = None
+        self._lock = threading.RLock()
+        self._last_sync_from_volume: Optional[float] = None
+        self._last_sync_to_volume: Optional[float] = None
+        self._files_uploaded: int = 0
+        self._files_downloaded: int = 0
+        self._bytes_uploaded: int = 0
+        self._bytes_downloaded: int = 0
+        self._errors: List[str] = []
+
+    # ------------------------------------------------------------------
+    # Factories
+    # ------------------------------------------------------------------
+
     @classmethod
-    def from_config(cls, cfg: Config) -> "UCVolumeHome":
-        raise NotImplementedError("UCVolumeHome is implemented in Phase 5")
+    def from_config(cls, cfg: Config, *, workspace_factory=None) -> "UCVolumeHome":
+        return cls(
+            local_root=cfg.hermes_home,
+            volume_root=cfg.hermes_home_volume_path,
+            workspace_factory=workspace_factory,
+        )
+
+    # ------------------------------------------------------------------
+    # Local setup
+    # ------------------------------------------------------------------
 
     def ensure_local_dirs(self) -> None:
-        raise NotImplementedError("UCVolumeHome is implemented in Phase 5")
+        self.local_root.mkdir(parents=True, exist_ok=True)
+        for sub in self.durable_subpaths:
+            # Treat anything that doesn't look like a file as a dir.
+            if "." not in Path(sub).name or sub.endswith("/"):
+                (self.local_root / sub).mkdir(parents=True, exist_ok=True)
 
-    def sync_from_volume(self) -> None:
-        raise NotImplementedError("UCVolumeHome is implemented in Phase 5")
+    # ------------------------------------------------------------------
+    # Path guards
+    # ------------------------------------------------------------------
 
-    def sync_to_volume(self) -> None:
-        return None
+    def _resolve_local(self, rel: str) -> Path:
+        """Resolve a relative path under the cache; reject escapes and absolutes."""
+        if rel is None:
+            raise ValueError("path is required")
+        rel_str = str(rel).strip()
+        if not rel_str:
+            return self.local_root
+        # Reject any explicit absolute path (POSIX or Windows drive letters).
+        # We do NOT silently strip leading slashes — that's confusing.
+        if rel_str.startswith("/") or rel_str.startswith("\\") or (len(rel_str) > 1 and rel_str[1] == ":"):
+            raise ValueError(f"Absolute paths are not allowed under HERMES_HOME: {rel!r}")
+        # Normalise separators; reject ``..`` and any post-resolution escape.
+        normalised = rel_str.replace("\\", "/")
+        parts = [p for p in normalised.split("/") if p not in ("", ".")]
+        if any(p == ".." for p in parts):
+            raise ValueError(f"Path escapes HERMES_HOME: {rel!r}")
+        candidate = (self.local_root / Path(*parts)).resolve()
+        try:
+            candidate.relative_to(self.local_root)
+        except ValueError as exc:
+            raise ValueError(f"Path escapes HERMES_HOME: {rel!r}") from exc
+        return candidate
 
-    def list(self, path: str = "") -> list:
-        return []
+    def _resolve_volume(self, rel: str) -> str:
+        rel_str = str(rel).strip()
+        if not rel_str:
+            return self.volume_root
+        if rel_str.startswith("/") or rel_str.startswith("\\") or (len(rel_str) > 1 and rel_str[1] == ":"):
+            raise ValueError(f"Absolute paths are not allowed: {rel!r}")
+        normalised = rel_str.replace("\\", "/")
+        parts = [p for p in normalised.split("/") if p not in ("", ".")]
+        if any(p == ".." for p in parts):
+            raise ValueError(f"Path escapes volume root: {rel!r}")
+        return self.volume_root + "/" + "/".join(parts)
 
-    def status(self) -> dict:
-        return {"status": "unavailable", "reason": "Phase 5 not yet wired"}
+    def _is_excluded(self, rel: str) -> bool:
+        rel_norm = rel.strip("/")
+        if not rel_norm:
+            return False
+        for excl in self.exclude:
+            if rel_norm == excl or rel_norm.startswith(excl + "/"):
+                return True
+        return False
+
+    def _is_durable(self, rel: str) -> bool:
+        rel_norm = rel.strip("/")
+        if not rel_norm:
+            return False
+        for subp in self.durable_subpaths:
+            if rel_norm == subp or rel_norm.startswith(subp + "/"):
+                return True
+        return False
+
+    # ------------------------------------------------------------------
+    # Basic file ops (cache + push)
+    # ------------------------------------------------------------------
+
+    def read_text(self, rel: str) -> str:
+        return self._resolve_local(rel).read_text(encoding="utf-8")
+
+    def read_bytes(self, rel: str) -> bytes:
+        return self._resolve_local(rel).read_bytes()
+
+    def exists(self, rel: str) -> bool:
+        return self._resolve_local(rel).exists()
+
+    def write_text(self, rel: str, content: str, *, push: bool = True) -> None:
+        path = self._resolve_local(rel)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(content, encoding="utf-8")
+        if push and self._is_durable(rel):
+            try:
+                self._upload_one(rel)
+            except Exception:
+                log.exception("push-on-write failed for %s", rel)
+
+    def write_bytes(self, rel: str, data: bytes, *, push: bool = True) -> None:
+        path = self._resolve_local(rel)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(data)
+        if push and self._is_durable(rel):
+            try:
+                self._upload_one(rel)
+            except Exception:
+                log.exception("push-on-write failed for %s", rel)
+
+    def delete(self, rel: str, *, also_volume: bool = True) -> None:
+        path = self._resolve_local(rel)
+        if path.exists():
+            if path.is_dir():
+                for child in sorted(path.rglob("*"), reverse=True):
+                    if child.is_file():
+                        child.unlink(missing_ok=True)
+                    else:
+                        try:
+                            child.rmdir()
+                        except OSError:
+                            pass
+                path.rmdir()
+            else:
+                path.unlink(missing_ok=True)
+        if also_volume:
+            try:
+                w = self._client()
+                w.files.delete(self._resolve_volume(rel))
+            except Exception as exc:
+                log.debug("Volume delete swallowed for %s: %s", rel, exc)
+
+    def list(self, rel: str = "") -> List[Dict[str, Any]]:
+        local_dir = self._resolve_local(rel)
+        if not local_dir.exists():
+            return []
+        out: List[FileEntry] = []
+        for entry in sorted(local_dir.iterdir()):
+            stat = entry.stat()
+            relative = str(entry.relative_to(self.local_root))
+            out.append(FileEntry(
+                name=entry.name,
+                relative_path=relative,
+                is_dir=entry.is_dir(),
+                size=stat.st_size if entry.is_file() else None,
+                modified_at=stat.st_mtime,
+            ))
+        return [e.to_dict() for e in out]
+
+    # ------------------------------------------------------------------
+    # Sync — volume → local
+    # ------------------------------------------------------------------
+
+    def sync_from_volume(self) -> Dict[str, Any]:
+        with self._lock:
+            self._files_downloaded = 0
+            self._bytes_downloaded = 0
+            try:
+                self._walk_volume_into_local(self.volume_root)
+            except _NotFound:
+                log.info("UC Volume %s does not exist yet — skipping initial sync", self.volume_root)
+            self._last_sync_from_volume = time.time()
+            return {
+                "files_downloaded": self._files_downloaded,
+                "bytes_downloaded": self._bytes_downloaded,
+                "at": self._last_sync_from_volume,
+            }
+
+    def _walk_volume_into_local(self, vol_path: str) -> None:
+        w = self._client()
+        try:
+            entries = list(w.files.list_directory_contents(vol_path))
+        except Exception as exc:
+            if _is_not_found(exc):
+                raise _NotFound() from exc
+            log.warning("list_directory_contents failed for %s: %s", vol_path, exc)
+            return
+
+        for entry in entries:
+            path = getattr(entry, "path", None) or getattr(entry, "name", None)
+            if not path:
+                continue
+            is_dir = bool(getattr(entry, "is_directory", False))
+            if is_dir:
+                self._walk_volume_into_local(path)
+                continue
+            rel = self._volume_to_relative(path)
+            if rel is None:
+                continue
+            try:
+                local_path = self._resolve_local(rel)
+            except ValueError:
+                continue
+            local_path.parent.mkdir(parents=True, exist_ok=True)
+            try:
+                resp = w.files.download(path)
+                contents = resp.contents.read() if hasattr(resp.contents, "read") else resp.contents
+                local_path.write_bytes(contents)
+                self._files_downloaded += 1
+                self._bytes_downloaded += len(contents)
+            except Exception:
+                log.exception("download failed for %s", path)
+                self._errors.append(f"download:{path}")
+
+    def _volume_to_relative(self, vol_path: str) -> Optional[str]:
+        if not vol_path.startswith(self.volume_root):
+            return None
+        rel = vol_path[len(self.volume_root):].lstrip("/")
+        return rel or None
+
+    # ------------------------------------------------------------------
+    # Sync — local → volume
+    # ------------------------------------------------------------------
+
+    def sync_to_volume(self, *, only_durable: bool = True) -> Dict[str, Any]:
+        with self._lock:
+            self._files_uploaded = 0
+            self._bytes_uploaded = 0
+            roots: Iterable[Path]
+            if only_durable:
+                roots = self._durable_local_paths()
+            else:
+                roots = [self.local_root]
+            for root in roots:
+                if not root.exists():
+                    continue
+                if root.is_file():
+                    self._upload_path(root)
+                else:
+                    for entry in root.rglob("*"):
+                        if entry.is_file():
+                            self._upload_path(entry)
+            self._last_sync_to_volume = time.time()
+            return {
+                "files_uploaded": self._files_uploaded,
+                "bytes_uploaded": self._bytes_uploaded,
+                "at": self._last_sync_to_volume,
+            }
+
+    def _durable_local_paths(self) -> List[Path]:
+        out: List[Path] = []
+        for sub in self.durable_subpaths:
+            out.append((self.local_root / sub))
+        return out
+
+    def _upload_path(self, local_file: Path) -> None:
+        rel = str(local_file.relative_to(self.local_root))
+        if self._is_excluded(rel):
+            return
+        try:
+            size = local_file.stat().st_size
+        except OSError:
+            return
+        if size > self.max_file_bytes:
+            log.debug("Skipping %s (size %d > max %d)", rel, size, self.max_file_bytes)
+            return
+        try:
+            self._upload_one(rel)
+        except Exception:
+            log.exception("upload failed for %s", rel)
+            self._errors.append(f"upload:{rel}")
+
+    def _upload_one(self, rel: str) -> None:
+        local_path = self._resolve_local(rel)
+        if not local_path.exists() or local_path.is_dir():
+            return
+        if self._is_excluded(rel):
+            return
+        vol_path = self._resolve_volume(rel)
+        w = self._client()
+        data = local_path.read_bytes()
+        w.files.upload(vol_path, contents=io.BytesIO(data), overwrite=True)
+        self._files_uploaded += 1
+        self._bytes_uploaded += len(data)
+
+    # ------------------------------------------------------------------
+    # Diagnostics
+    # ------------------------------------------------------------------
+
+    def status(self) -> Dict[str, Any]:
+        return {
+            "local_root": str(self.local_root),
+            "volume_root": self.volume_root,
+            "durable_subpaths": sorted(self.durable_subpaths),
+            "excluded_from_upload": sorted(self.exclude),
+            "max_file_bytes": self.max_file_bytes,
+            "last_sync_from_volume": self._last_sync_from_volume,
+            "last_sync_to_volume": self._last_sync_to_volume,
+            "files_uploaded_running": self._files_uploaded,
+            "files_downloaded_running": self._files_downloaded,
+            "errors_running": list(self._errors[-25:]),
+        }
+
+    async def health_probe(self) -> Dict[str, Any]:
+        try:
+            w = self._client()
+            # Cheapest reach: list the volume root. Tolerate NotFound (first deploy).
+            try:
+                _ = list(w.files.list_directory_contents(self.volume_root))
+                status = "ok"
+            except Exception as exc:
+                if _is_not_found(exc):
+                    status = "empty"
+                else:
+                    raise
+            return {
+                "status": status,
+                "volume_root": self.volume_root,
+                "last_sync_from_volume": self._last_sync_from_volume,
+                "last_sync_to_volume": self._last_sync_to_volume,
+            }
+        except Exception as exc:
+            return {
+                "status": "error",
+                "reason": f"{type(exc).__name__}: {exc}",
+                "volume_root": self.volume_root,
+            }
 
     def close(self) -> None:
         return None
 
-    async def health_probe(self) -> dict:
-        return {"status": "unavailable", "reason": "Phase 5 not yet wired"}
+    # ------------------------------------------------------------------
+    # Workspace client
+    # ------------------------------------------------------------------
+
+    def _client(self):
+        if self._workspace is not None:
+            return self._workspace
+        if self._workspace_factory is not None:
+            self._workspace = self._workspace_factory()
+            return self._workspace
+        from databricks.sdk import WorkspaceClient  # type: ignore
+        self._workspace = WorkspaceClient()
+        return self._workspace
+
+
+# ---------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------
+
+
+class _NotFound(Exception):
+    pass
+
+
+def _is_not_found(exc: Exception) -> bool:
+    name = type(exc).__name__
+    if name in {"ResourceDoesNotExist", "NotFound", "_NotFound"}:
+        return True
+    msg = str(exc).lower()
+    return "not found" in msg or "does not exist" in msg or "404" in msg

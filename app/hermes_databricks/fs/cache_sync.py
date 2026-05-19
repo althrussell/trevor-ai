@@ -1,16 +1,34 @@
-"""Background cache → UC Volume sync (Phase 1 skeleton; full in Phase 5)."""
+"""Tiny adapter that the supervisor can use to trigger UC Volume syncs.
+
+This lives next to ``UCVolumeHome`` so that callers don't import
+``WorkspaceClient`` directly; the supervisor only needs to call
+``cache_sync.sync_now()`` from its heartbeat task.
+"""
 
 from __future__ import annotations
 
-from pathlib import Path
-from typing import Iterable
+import logging
+from typing import Optional
+
+from hermes_databricks.fs.volume_fs import UCVolumeHome
 
 
-class CacheSync:  # pragma: no cover - Phase 1 stub
-    def __init__(self, local_root: Path, volume_root: str, durable_subpaths: Iterable[str]) -> None:
-        self.local_root = local_root
-        self.volume_root = volume_root
-        self.durable_subpaths = list(durable_subpaths)
+log = logging.getLogger("hermes_databricks.fs.cache_sync")
 
-    def sync_now(self) -> None:
-        return None
+
+class CacheSync:
+    """Light wrapper that runs ``UCVolumeHome.sync_to_volume`` on demand."""
+
+    def __init__(self, home: UCVolumeHome) -> None:
+        self.home = home
+        self._last_result: Optional[dict] = None
+
+    def sync_now(self, *, only_durable: bool = True) -> dict:
+        self._last_result = self.home.sync_to_volume(only_durable=only_durable)
+        return self._last_result
+
+    def status(self) -> dict:
+        return {
+            "last": self._last_result,
+            "home_status": self.home.status(),
+        }
