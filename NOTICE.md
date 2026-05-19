@@ -25,6 +25,7 @@ declared by each project's package metadata at the time of writing
 |---|---|---|---|
 | `hermes-agent` | `==0.14.0` | MIT | <https://github.com/NousResearch/hermes-agent> |
 | `databricks-sdk` | `==0.105.0` | Apache-2.0 | <https://github.com/databricks/databricks-sdk-py> |
+| `mlflow-skinny` | `==3.5.0` | Apache-2.0 | <https://github.com/mlflow/mlflow> |
 | `fastapi` | `==0.115.5` | MIT | <https://github.com/fastapi/fastapi> |
 | `uvicorn[standard]` | `==0.32.1` | BSD-3-Clause | <https://github.com/encode/uvicorn> |
 | `psycopg[binary]` | `==3.2.3` | LGPL-3.0 (see note below) | <https://github.com/psycopg/psycopg> |
@@ -129,14 +130,37 @@ credited here so contributors can read them in context.
 ### Databricks AI Dev Kit
 
 * Repository: <https://github.com/databricks-solutions/ai-dev-kit>
-* License: "Databricks License" — a custom license restricting use
-  to "in connection with your use of the Databricks Services".
-* Used here as: **not used**. This project does not depend on,
-  import, vendor, or adapt code from `ai-dev-kit`. The license-
-  compliance review for this NOTICE explicitly confirmed zero
-  references in the codebase (`rg -i 'ai-dev-kit|ai_dev_kit|
-  databricks-solutions|databricks_tools_core|fastmcp|
-  claude-agent-sdk'` returns no matches).
+* License: "Databricks License" — a custom license permitting
+  redistribution provided that use is "within or connecting to the
+  Databricks Services". The full license text is vendored at
+  [app/seeds/skills/databricks/UPSTREAM_LICENSE.md](app/seeds/skills/databricks/UPSTREAM_LICENSE.md).
+* Used here as: **the `databricks-skills/` markdown subtree is
+  vendored** into [app/seeds/skills/databricks/](app/seeds/skills/databricks/)
+  at the upstream tag/commit recorded in
+  [app/seeds/skills/databricks/SKILLS_VERSION](app/seeds/skills/databricks/SKILLS_VERSION).
+  The skills are seeded into `HERMES_HOME/skills/databricks/` on
+  first boot of the Databricks App, where Hermes' `skill_list` /
+  `skill_view` / `skill_search` tools surface them to the agent at
+  runtime. The bundled skills are unmodified; per the upstream
+  license, any modification must carry a prominent
+  `Modified-by-trevor:` notice at the top of the affected SKILL.md.
+* **Scope of vendoring**: the `databricks-skills/` directory only.
+  We deliberately do **not** vendor or depend on:
+  * `databricks-tools-core/` — we use `databricks-sdk` directly.
+  * `databricks-mcp-server/` — Trevor uses the Hermes tool registry,
+    not an MCP gateway, for Databricks ops.
+  * `databricks-builder-app/` — out of scope for this project.
+  * The upstream installer scripts (`install_skills.sh`,
+    `install_genie_code_skills.py`) — not needed at agent runtime.
+* **License qualification**: Trevor runs as a Databricks App, so
+  "use within or connecting to the Databricks Services" is
+  satisfied for the bundled skills. The license forbids stand-alone
+  use of the skills outside a Databricks context — fork users who
+  redeploy Trevor outside a Databricks workspace are responsible
+  for re-evaluating compliance.
+* This project's own code remains MIT-licensed; the Databricks
+  License applies only to the contents of
+  [app/seeds/skills/databricks/](app/seeds/skills/databricks/).
 * The `ai-dev-kit` README's structure (LICENSE / NOTICE / SECURITY
   / CONTRIBUTING / CODEOWNERS / dependency table) was reviewed as
   a *governance* pattern — ideas about how to organise a

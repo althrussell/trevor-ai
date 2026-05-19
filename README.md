@@ -442,11 +442,43 @@ tool stays registered and returns a `BackendUnavailable` diagnostic.
 | `databricks_serving_endpoint_status` | Read-only |
 | `databricks_uc_describe_table` | `HERMES_DATABRICKS_QUERY_ALLOWED_TABLES` allowlist |
 | `databricks_uc_query_readonly` | `SELECT`/`WITH` only; no stacked queries; `row_limit ≤ 5000`; `warehouse_id` required |
+| `databricks_sql_execute` | Full SQL surface; SELECT bypasses gates; mutations require `WRITES_ENABLED=true` + target in `WRITE_ALLOWED_SCHEMAS`; destructive verbs need `YOLO=true` |
 | `databricks_volume_read` | Prefix gate + byte cap |
-| `databricks_volume_write_agent_note` | Restricted to `<artifacts_volume>/<agent-notes>/` |
+| `databricks_volume_list` | Allowed prefixes = read + write allowlist union |
+| `databricks_volume_write_agent_note` | Restricted to `<artifacts_volume>/<agent-notes>/` (legacy convenience tool, **not** gated) |
+| `databricks_volume_write` | Path inside `WRITE_ALLOWED_VOLUMES`; requires `WRITES_ENABLED=true`; overwriting existing files requires `YOLO=true` |
+| `databricks_volume_mkdir` | Allowlist-gated; requires `WRITES_ENABLED=true` |
+| `databricks_volume_delete` | Always destructive — requires `WRITES_ENABLED=true` AND `YOLO=true` |
 | `databricks_jobs_list` | Filtered by App SP visibility |
 | `databricks_jobs_run_allowlist` | `HERMES_DATABRICKS_JOB_ID_ALLOWLIST` allowlist |
-| `databricks_terminal` | Shares the `terminal_backend` |
+| `databricks_terminal` | Shares the `terminal_backend`; cwd under `<HERMES_HOME>/workspace`; 60s default timeout |
+| `databricks_python_exec` | Python wrapper over `terminal_backend`; script lands in `<HERMES_HOME>/workspace/_python_exec/`; **not** gated — mutations bypass SQL/volume gates, prefer the gated primitives when they apply |
+
+The two master switches that drive every gate above:
+
+| Env var | Default | Meaning |
+|---|---|---|
+| `HERMES_DATABRICKS_WRITES_ENABLED` | `false` | Master switch for every mutating primitive |
+| `HERMES_DATABRICKS_YOLO` | `false` | When writes are on, additionally allow destructive verbs (`DROP`, `TRUNCATE`, `DELETE` without `WHERE`, volume delete, force-overwrite) |
+
+Per-target defaults live in [`databricks.yml`](databricks.yml) — `free`
+keeps both off (least privilege on the shared Free workspace), `dev`
+and `prod` enable writes by default but never YOLO. Full env-var matrix,
+destructive-verb list, and the App-SP grant matrix in
+[`docs/DATABRICKS_OPS.md`](docs/DATABRICKS_OPS.md).
+
+### Bundled Databricks skills
+
+The agent ships with 27 markdown skills vendored from
+[ai-dev-kit's `databricks-skills/`](https://github.com/databricks-solutions/ai-dev-kit/tree/main/databricks-skills)
+at a pinned tag (see
+[`app/seeds/skills/databricks/SKILLS_VERSION`](app/seeds/skills/databricks/SKILLS_VERSION)).
+On first boot the supervisor copies them into
+`HERMES_HOME/skills/databricks/` and Hermes' `skill_list` /
+`skill_view` / `skill_search` tools surface them to the LLM. The
+routing manifest is at
+[`app/seeds/skills/databricks/INDEX.md`](app/seeds/skills/databricks/INDEX.md).
+Refresh with [`scripts/sync_databricks_skills.sh`](scripts/sync_databricks_skills.sh).
 
 ---
 
@@ -504,6 +536,10 @@ and PR.
 | Add a custom Hermes tool | Drop a file under `vendor/hermes-agent/tools/`; call `registry.register(...)` at module top-level |
 | Add a Databricks-native tool | Edit `app/hermes_databricks/tools/databricks_toolset.py`; add a `_ToolSpec` |
 | Allowlist a new UC table | Add to `HERMES_DATABRICKS_QUERY_ALLOWED_TABLES` in `app/app.yaml` |
+| Allow Trevor to write to a new schema | Add a `catalog.schema.*` pattern to `HERMES_DATABRICKS_WRITE_ALLOWED_SCHEMAS`, redeploy with `--var writes_enabled=true`, run `databricks bundle run setup_grants` |
+| Allow Trevor to write to a new UC Volume | Add the `/Volumes/...` prefix to `HERMES_DATABRICKS_WRITE_ALLOWED_VOLUMES`; ensure the App SP has `WRITE_VOLUME` on it |
+| Let Trevor `DROP` / `TRUNCATE` etc. | Redeploy with `--var yolo=true` (each call is logged as `dbx_yolo_call`) |
+| Add a new ai-dev-kit skill / bump the pin | `scripts/sync_databricks_skills.sh --tag <new>` then commit |
 | Enable an external browser | Add the relevant API key to secrets and set `HERMES_DATABRICKS_BROWSER_BACKEND=external_browser` |
 | Add a new chat channel | Mirror `telegram_polling.py` (outbound poll + allowlist + dispatch via `runtime.run_turn`); register `health_probe` with the supervisor |
 | Persist a new event kind | Call `supervisor._record_event(kind, payload)` — `/debug/events?kind=` will pick it up |
@@ -574,12 +610,22 @@ disclosures.
   faire). See [NOTICE.md §3](NOTICE.md#living-ai) for the full
   disclosure.
 * **Databricks AI Dev Kit** — <https://github.com/databricks-solutions/ai-dev-kit>.
-  Reviewed but **not used**. Distributed under a restrictive custom
-  "Databricks License" that limits use to Databricks Services
-  contexts; we deliberately avoid any code or content dependency on
-  it. The repo's *governance file layout* (LICENSE / NOTICE /
-  SECURITY / CONTRIBUTING / CODEOWNERS / dependency attribution
-  table) was reviewed as a non-copyrightable governance pattern;
-  our equivalents are independently authored.
+  The `databricks-skills/` markdown subtree is **vendored** at a
+  pinned upstream tag (see
+  [`app/seeds/skills/databricks/SKILLS_VERSION`](app/seeds/skills/databricks/SKILLS_VERSION))
+  and seeded into `HERMES_HOME/skills/databricks/` on first boot so
+  Trevor can pick the right Databricks playbook per user request via
+  Hermes' `skill_search`/`skill_view` tools. Distributed under the
+  Databricks License (see
+  [`app/seeds/skills/databricks/UPSTREAM_LICENSE.md`](app/seeds/skills/databricks/UPSTREAM_LICENSE.md)),
+  which permits redistribution provided that use is "within or
+  connecting to the Databricks Services" — Trevor runs as a
+  Databricks App, so this qualifies. We deliberately do **not**
+  vendor `databricks-tools-core/`, `databricks-mcp-server/`, or
+  `databricks-builder-app/`. The Trevor codebase itself remains
+  MIT-licensed; the Databricks License applies only to the contents
+  of `app/seeds/skills/databricks/`. See
+  [NOTICE.md §3](NOTICE.md#databricks-ai-dev-kit) for the full
+  scope-of-use statement.
 
 If this is useful to you, ⭐ the repo and tell me what broke.

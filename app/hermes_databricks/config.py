@@ -44,6 +44,13 @@ def _str_env(name: str, default: str = "") -> str:
     return raw.strip() or default
 
 
+def _csv_env(name: str, default: tuple[str, ...] = ()) -> tuple[str, ...]:
+    raw = os.environ.get(name)
+    if raw is None or not raw.strip():
+        return tuple(default)
+    return tuple(s.strip() for s in raw.split(",") if s.strip())
+
+
 @dataclass(frozen=True)
 class Config:
     # Identity
@@ -81,6 +88,12 @@ class Config:
     cache_root: Path = field(default_factory=lambda: Path("/tmp/hermes_cache"))
     hermes_home: Path = field(default_factory=lambda: Path("/tmp/hermes_cache/hermes_home"))
 
+    # Databricks-ops master switches (see docs/DATABRICKS_OPS.md)
+    writes_enabled: bool = False
+    yolo: bool = False
+    write_allowed_schemas: tuple[str, ...] = field(default_factory=tuple)
+    write_allowed_volumes: tuple[str, ...] = field(default_factory=tuple)
+
     # Misc
     log_level: str = "INFO"
 
@@ -101,12 +114,26 @@ def load() -> Config:
     cache_root = Path(_str_env("HERMES_DATABRICKS_CACHE_ROOT", "/tmp/hermes_cache"))
     hermes_home = Path(_str_env("HERMES_HOME", str(cache_root / "hermes_home")))
 
+    catalog = _str_env("HERMES_DATABRICKS_CATALOG", "workspace")
+    schema = _str_env("HERMES_DATABRICKS_SCHEMA", "hermes_agent")
+    hermes_home_volume = _str_env("HERMES_DATABRICKS_HERMES_HOME_VOLUME", "hermes_home")
+    artifacts_volume = _str_env("HERMES_DATABRICKS_ARTIFACTS_VOLUME", "hermes_artifacts")
+
+    # Default the write allowlists to "everything the bundle owns" so the
+    # operator doesn't have to repeat catalog/schema/volume names in two
+    # places. The values can still be overridden via env vars.
+    default_write_schemas = (f"{catalog}.{schema}.*",)
+    default_write_volumes = (
+        f"/Volumes/{catalog}/{schema}/{hermes_home_volume}",
+        f"/Volumes/{catalog}/{schema}/{artifacts_volume}",
+    )
+
     return Config(
         agent_name=_str_env("HERMES_DATABRICKS_AGENT_NAME", "Hermes"),
-        catalog=_str_env("HERMES_DATABRICKS_CATALOG", "workspace"),
-        schema=_str_env("HERMES_DATABRICKS_SCHEMA", "hermes_agent"),
-        hermes_home_volume=_str_env("HERMES_DATABRICKS_HERMES_HOME_VOLUME", "hermes_home"),
-        artifacts_volume=_str_env("HERMES_DATABRICKS_ARTIFACTS_VOLUME", "hermes_artifacts"),
+        catalog=catalog,
+        schema=schema,
+        hermes_home_volume=hermes_home_volume,
+        artifacts_volume=artifacts_volume,
         secrets_scope=_str_env("HERMES_DATABRICKS_SECRETS_SCOPE", "hermes_agent"),
         warehouse_id=_str_env("HERMES_DATABRICKS_WAREHOUSE_ID", ""),
         lakebase_instance=_str_env("HERMES_DATABRICKS_LAKEBASE_INSTANCE", "hermes-db"),
@@ -124,6 +151,16 @@ def load() -> Config:
         mcp_enabled=_bool_env("HERMES_DATABRICKS_MCP_ENABLED", False),
         cache_root=cache_root,
         hermes_home=hermes_home,
+        writes_enabled=_bool_env("HERMES_DATABRICKS_WRITES_ENABLED", False),
+        yolo=_bool_env("HERMES_DATABRICKS_YOLO", False),
+        write_allowed_schemas=_csv_env(
+            "HERMES_DATABRICKS_WRITE_ALLOWED_SCHEMAS",
+            default=default_write_schemas,
+        ),
+        write_allowed_volumes=_csv_env(
+            "HERMES_DATABRICKS_WRITE_ALLOWED_VOLUMES",
+            default=default_write_volumes,
+        ),
         log_level=_str_env("HERMES_DATABRICKS_LOG_LEVEL", "INFO"),
     )
 

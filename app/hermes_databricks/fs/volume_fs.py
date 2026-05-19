@@ -284,6 +284,93 @@ class UCVolumeHome:
         return [e.to_dict() for e in out]
 
     # ------------------------------------------------------------------
+    # First-boot seeding
+    # ------------------------------------------------------------------
+
+    def seed_if_empty(
+        self,
+        seed_dir: Path,
+        target_subpath: str,
+        *,
+        push: bool = True,
+    ) -> dict[str, Any]:
+        """Copy ``seed_dir`` into ``<HERMES_HOME>/<target_subpath>`` when empty.
+
+        Used to seed the bundled Databricks skills (and any other
+        first-boot defaults we ship in ``app/seeds/``) into the durable
+        UC Volume mirror on the very first boot of a new App. The
+        target is considered "empty" if the local cache directory does
+        not exist or contains no files. Subsequent boots skip the seed
+        because ``sync_from_volume()`` will have already hydrated the
+        cache from the durable mirror.
+
+        Returns a dict describing what happened so the caller can log
+        it on the supervisor's ``agent_events`` ledger.
+        """
+        seed_dir = Path(seed_dir)
+        result: dict[str, Any] = {
+            "target_subpath": target_subpath,
+            "seed_dir": str(seed_dir),
+            "seeded": False,
+            "files_copied": 0,
+            "bytes_copied": 0,
+            "skipped_reason": None,
+        }
+
+        if not seed_dir.exists() or not seed_dir.is_dir():
+            result["skipped_reason"] = "seed_dir_missing"
+            return result
+
+        try:
+            local_target = self._resolve_local(target_subpath)
+        except ValueError as exc:
+            result["skipped_reason"] = f"invalid_target: {exc}"
+            return result
+
+        if local_target.exists() and any(local_target.rglob("*")):
+            result["skipped_reason"] = "target_not_empty"
+            return result
+
+        with self._lock:
+            local_target.mkdir(parents=True, exist_ok=True)
+            for src_file in seed_dir.rglob("*"):
+                if not src_file.is_file():
+                    continue
+                rel_from_seed = src_file.relative_to(seed_dir)
+                dest = local_target / rel_from_seed
+                dest.parent.mkdir(parents=True, exist_ok=True)
+                try:
+                    data = src_file.read_bytes()
+                except OSError as exc:
+                    log.warning("seed_if_empty: read failed for %s: %s", src_file, exc)
+                    continue
+                dest.write_bytes(data)
+                result["files_copied"] += 1
+                result["bytes_copied"] += len(data)
+
+            result["seeded"] = True
+            log.info(
+                "seeded HERMES_HOME subpath",
+                extra={
+                    "extras": {
+                        "target_subpath": target_subpath,
+                        "files_copied": result["files_copied"],
+                        "bytes_copied": result["bytes_copied"],
+                    }
+                },
+            )
+
+            if push and self._is_durable(target_subpath):
+                try:
+                    push_result = self.touch_subpath(target_subpath)
+                    result["pushed"] = push_result
+                except Exception:
+                    log.exception("seed_if_empty: push to volume failed for %s", target_subpath)
+                    result["pushed"] = {"ok": False, "reason": "push_failed"}
+
+        return result
+
+    # ------------------------------------------------------------------
     # Sync — volume → local
     # ------------------------------------------------------------------
 

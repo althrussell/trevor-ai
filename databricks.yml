@@ -82,6 +82,20 @@ variables:
     description: Whether to start the Telegram long-polling loop at boot.
     default: "true"
 
+  writes_enabled:
+    description: |
+      Master switch for mutating Databricks primitives (databricks_sql_execute,
+      databricks_volume_write, ...). When "false" the tools are registered but
+      reject with {"error":"writes_disabled"}. See docs/DATABRICKS_OPS.md.
+    default: "false"
+
+  yolo:
+    description: |
+      When writes are enabled, additionally allow destructive verbs (DROP,
+      TRUNCATE, DELETE-without-WHERE, volume delete, force-overwrite). Logged
+      as agent_events kind="dbx_yolo_call". NEVER true on the free target.
+    default: "false"
+
 targets:
   free:
     default: true
@@ -91,12 +105,19 @@ targets:
     variables:
       heartbeat_seconds: 180
       daily_token_cap: 100000
+      # Free Edition stays read-only by default: no broad privilege escalation
+      # on the shared Free workspace. Operator can flip per-deploy via --var.
+      writes_enabled: "false"
+      yolo: "false"
 
   dev:
     workspace:
       profile: hermes-dev
     variables:
       heartbeat_seconds: 60
+      # Dev opts into mutating primitives but never YOLO by default.
+      writes_enabled: "true"
+      yolo: "false"
 
   prod:
     mode: production
@@ -105,3 +126,7 @@ targets:
     variables:
       heartbeat_seconds: 300
       daily_token_cap: 1000000
+      # Prod opts into mutating primitives; destructive ops still need a
+      # deliberate --var yolo=true on the deploy command.
+      writes_enabled: "true"
+      yolo: "false"

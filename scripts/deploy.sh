@@ -8,8 +8,9 @@
 # Steps:
 #   1. databricks bundle validate
 #   2. databricks bundle deploy
-#   3. databricks bundle run setup_lakebase  (idempotent DDL + GRANTs)
-#   4. databricks bundle run hermes_app      (start the App)
+#   3. databricks bundle run setup_lakebase  (idempotent DDL + GRANTs on Lakebase)
+#   4. databricks bundle run setup_grants    (idempotent UC GRANTs for the App SP)
+#   5. databricks bundle run hermes_app      (start the App)
 #
 # Prerequisites:
 #   - databricks CLI installed and on PATH
@@ -29,8 +30,11 @@ databricks bundle validate --profile "$PROFILE" -t "$TARGET"
 echo "==> deploy (target=$TARGET, profile=$PROFILE)"
 databricks bundle deploy --profile "$PROFILE" -t "$TARGET"
 
-echo "==> run setup_lakebase (DDL + GRANTs)"
+echo "==> run setup_lakebase (Lakebase schema + grants)"
 databricks bundle run setup_lakebase --profile "$PROFILE" -t "$TARGET"
+
+echo "==> run setup_grants (UC privileges for the App SP)"
+databricks bundle run setup_grants --profile "$PROFILE" -t "$TARGET"
 
 echo "==> start hermes_app"
 databricks bundle run hermes_app --profile "$PROFILE" -t "$TARGET"

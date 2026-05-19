@@ -56,6 +56,29 @@ allowlist using only the standard library.
 For end-to-end work you'll need a Databricks workspace (Free Edition is
 fine) and the Databricks CLI ≥ 0.245. See [QUICKSTART.md](QUICKSTART.md).
 
+### Refreshing vendored ai-dev-kit skills
+
+The 27 markdown skills under
+[`app/seeds/skills/databricks/`](app/seeds/skills/databricks/) are
+vendored from [ai-dev-kit](https://github.com/databricks-solutions/ai-dev-kit)
+at the tag pinned in
+[`SKILLS_VERSION`](app/seeds/skills/databricks/SKILLS_VERSION). To pull
+a newer upstream tag:
+
+```bash
+scripts/sync_databricks_skills.sh --tag v0.1.12  # or 'main' for the tip
+git diff app/seeds/skills/databricks/             # review the churn
+git add app/seeds/skills/databricks/
+git commit -m "Refresh ai-dev-kit skills to v0.1.12"
+```
+
+The script regenerates `SKILLS_VERSION` and `INDEX.md`, preserves
+`VENDOR_README.md`, and refreshes `UPSTREAM_LICENSE.md` /
+`UPSTREAM_NOTICE.md` / `UPSTREAM_NOTICE.txt`. The bundled skills carry
+the upstream Databricks License — see
+[NOTICE.md §3](NOTICE.md#databricks-ai-dev-kit) for the scope-of-use
+statement.
+
 ---
 
 ## Code style

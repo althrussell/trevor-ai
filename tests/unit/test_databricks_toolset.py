@@ -41,11 +41,17 @@ def test_tool_names_are_stable():
         "databricks_serving_endpoint_status",
         "databricks_uc_describe_table",
         "databricks_uc_query_readonly",
+        "databricks_sql_execute",
         "databricks_volume_read",
         "databricks_volume_write_agent_note",
+        "databricks_volume_write",
+        "databricks_volume_list",
+        "databricks_volume_delete",
+        "databricks_volume_mkdir",
         "databricks_jobs_list",
         "databricks_jobs_run_allowlist",
         "databricks_terminal",
+        "databricks_python_exec",
     }
     assert set(dts.tool_names()) == expected
 

@@ -13,3 +13,23 @@ resources:
               instance_name: ${var.lakebase_instance}
               app_sp_client_id: ${resources.apps.hermes_app.service_principal_client_id}
               schema_name: hermes_session
+
+    setup_grants:
+      name: hermes-setup-grants
+      # Idempotent UC grants for the App SP so the skill-driven
+      # primitives (databricks_sql_execute, databricks_volume_*,
+      # databricks_python_exec) can actually do their job. Workspace-
+      # level grants (warehouse CAN_USE, serving CAN_MANAGE, Lakebase
+      # CAN_MANAGE) come from the app resource bindings in app.yml.
+      tasks:
+        - task_key: grant_uc_privileges
+          notebook_task:
+            notebook_path: ../sql/setup_grants.py
+            base_parameters:
+              catalog: ${var.catalog}
+              schema: ${var.schema}
+              app_sp_client_id: ${resources.apps.hermes_app.service_principal_client_id}
+              # Flip to "true" if you also want the App SP to create
+              # new schemas in the catalog (e.g. for the
+              # databricks-unity-catalog skill's CREATE SCHEMA recipe).
+              enable_create_schema: "false"

@@ -55,9 +55,34 @@ env:
   - name: HERMES_DATABRICKS_MCP_ENABLED
     value: "false"
 
-  # SQL Warehouse for databricks_uc_query_readonly (optional)
+  # SQL Warehouse for databricks_uc_query_readonly + databricks_sql_execute
   - name: HERMES_DATABRICKS_WAREHOUSE_ID
     value: "9a444167489c1f75"
+
+  # Databricks-ops gates (see docs/DATABRICKS_OPS.md)
+  #
+  # WRITES_ENABLED:
+  #   false (default) → all mutating primitives reject with {"error":"writes_disabled"};
+  #                      reads (databricks_uc_query_readonly, databricks_volume_read, ...) still work.
+  #   true            → DML and non-destructive DDL allowed; destructive verbs still need YOLO.
+  #
+  # YOLO:
+  #   false (default) → destructive verbs (DROP, TRUNCATE, DELETE-without-WHERE,
+  #                      volume delete, force-overwrite) are rejected with
+  #                      {"error":"yolo_required"}.
+  #   true            → everything goes. Each such call is logged as
+  #                      agent_events kind="dbx_yolo_call".
+  - name: HERMES_DATABRICKS_WRITES_ENABLED
+    value: "false"
+  - name: HERMES_DATABRICKS_YOLO
+    value: "false"
+  # Override these CSVs to widen or narrow what the mutating primitives accept.
+  # When unset, defaults to the bundle's own catalog/schema and bundle-managed
+  # volumes (resolved in hermes_databricks.config.load()).
+  # - name: HERMES_DATABRICKS_WRITE_ALLOWED_SCHEMAS
+  #   value: "workspace.hermes_agent.*"
+  # - name: HERMES_DATABRICKS_WRITE_ALLOWED_VOLUMES
+  #   value: "/Volumes/workspace/hermes_agent/hermes_home,/Volumes/workspace/hermes_agent/hermes_artifacts"
 
   # Hermes home (the local cache; durable mirror lives in UC Volume)
   - name: HERMES_HOME

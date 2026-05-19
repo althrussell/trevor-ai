@@ -4,6 +4,16 @@ resources:
       name: ${var.app_name}
       source_code_path: ../app
       description: "Hermes Agent (${var.agent_name}) running on Databricks Free Edition."
+      config:
+        env:
+          # Per-target overrides for the Databricks-ops gates. Defaults
+          # in app.yaml are safe (false/false); bundle vars in
+          # databricks.yml flip them per target without editing
+          # app.yaml at deploy time.
+          - name: HERMES_DATABRICKS_WRITES_ENABLED
+            value: ${var.writes_enabled}
+          - name: HERMES_DATABRICKS_YOLO
+            value: ${var.yolo}
       resources:
         - name: hermes-home-volume
           uc_securable:
@@ -21,6 +31,28 @@ resources:
           serving_endpoint:
             name: ${var.llm_endpoint}
             permission: CAN_QUERY
+
+        # SQL warehouse used by databricks_uc_query_readonly and
+        # databricks_sql_execute. CAN_USE is the minimum permission
+        # needed for the App SP to execute statements; access to the
+        # underlying tables is governed by Unity Catalog (see
+        # `sql/setup_grants.py` for the catalog/schema GRANTs).
+        - name: sql-warehouse
+          sql_warehouse:
+            id: ${var.warehouse_id}
+            permission: CAN_USE
+
+        # Lakebase Postgres instance binding. Gives the App SP CAN_USE
+        # on the instance so the SDK-driven session DB connector and
+        # any skills that touch Lakebase (e.g. databricks-lakebase-*)
+        # can authenticate without manual privilege juggling. On Free
+        # Edition the instance is read-only via the SDK in some tiers
+        # — the binding is still safe to declare.
+        - name: lakebase-instance
+          database:
+            database_name: ${var.lakebase_database}
+            instance_name: ${var.lakebase_instance}
+            permission: CAN_CONNECT_AND_CREATE
 
         # Telegram secret bindings. The ``hermes_agent`` scope must
         # exist with these three keys BEFORE deploy:

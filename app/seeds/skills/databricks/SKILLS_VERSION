@@ -1,0 +1,11 @@
+upstream: databricks-solutions/ai-dev-kit
+tag: v0.1.11
+commit: 1b75b9e7191a47fde015376f69f06aaee52f6c65
+vendored_at: 2026-05-19
+license: app/seeds/skills/databricks/UPSTREAM_LICENSE.md
+notice: app/seeds/skills/databricks/UPSTREAM_NOTICE.txt
+scope: databricks-skills/ markdown subtree only (no databricks-tools-core, databricks-mcp-server, databricks-builder-app)
+excluded:
+  - install_skills.sh           # upstream installer, not needed at agent runtime
+  - install_genie_code_skills.py # upstream installer, not needed at agent runtime
+modifications: none

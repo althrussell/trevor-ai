@@ -60,6 +60,8 @@ class HermesRuntime:
 
         # Phase 5: UC Volume HERMES_HOME mirror
         try:
+            from pathlib import Path as _Path
+
             from hermes_databricks.fs.volume_fs import UCVolumeHome
 
             self.home_fs = UCVolumeHome.from_config(self.cfg)
@@ -69,6 +71,20 @@ class HermesRuntime:
             except Exception:
                 log.exception("UC Volume initial sync failed (continuing with empty cache)")
                 self.errors["uc_volume_sync_initial"] = "see logs"
+
+            try:
+                seed_root = _Path(__file__).resolve().parent.parent / "seeds" / "skills"
+                if seed_root.exists():
+                    for seed_dir in sorted(p for p in seed_root.iterdir() if p.is_dir()):
+                        target = f"skills/{seed_dir.name}"
+                        seed_result = self.home_fs.seed_if_empty(seed_dir, target)
+                        log.info(
+                            "skill seed pass",
+                            extra={"extras": seed_result},
+                        )
+            except Exception:
+                log.exception("seed_if_empty pass failed (continuing without seeded skills)")
+                self.errors["uc_volume_skill_seed"] = "see logs"
         except Exception as exc:
             log.exception("UCVolumeHome unavailable")
             self.errors["uc_volume"] = f"{type(exc).__name__}: {exc}"

@@ -50,7 +50,12 @@ from typing import Any
 
 from hermes_databricks.config import Config, load as load_cfg
 from hermes_databricks.tools import terminal_backend as _term
-from hermes_databricks.tools.sql_guard import validate_readonly
+from hermes_databricks.tools.sql_guard import (
+    find_destructive_verbs,
+    normalise_for_execute,
+    parse_targets,
+    validate_readonly,
+)
 
 log = logging.getLogger("hermes_databricks.tools.databricks_toolset")
 
@@ -138,6 +143,70 @@ def _table_match(full_name: str, patterns: list[str]) -> bool:
 def _path_match(path: str, prefixes: list[str]) -> bool:
     path = path.strip()
     return any(path == p or path.startswith(p.rstrip("/") + "/") for p in prefixes)
+
+
+# ---------------------------------------------------------------------
+# Write-gate helpers (used by mutating primitives only)
+# ---------------------------------------------------------------------
+
+
+def _writes_allowed(cfg: Config | None = None) -> tuple[bool, str | None]:
+    """Return ``(allowed, reason)`` based on the WRITES_ENABLED master switch."""
+    cfg = cfg or load_cfg()
+    if not cfg.writes_enabled:
+        return False, (
+            "Databricks writes are disabled. Set HERMES_DATABRICKS_WRITES_ENABLED=true "
+            "(and grant the App SP the matching UC privileges) to enable mutating tools."
+        )
+    return True, None
+
+
+def _yolo(cfg: Config | None = None) -> bool:
+    cfg = cfg or load_cfg()
+    return bool(cfg.yolo)
+
+
+def _allowed_write_schemas(cfg: Config | None = None) -> list[str]:
+    cfg = cfg or load_cfg()
+    return list(cfg.write_allowed_schemas)
+
+
+def _allowed_write_volumes(cfg: Config | None = None) -> list[str]:
+    cfg = cfg or load_cfg()
+    return list(cfg.write_allowed_volumes)
+
+
+def _schema_match(table_fqn: str, patterns: list[str]) -> bool:
+    """Match catalog.schema.table against patterns that may include trailing wildcards.
+
+    Patterns are either fully-qualified table names or one of the forms:
+      catalog.*                  → any object under the catalog
+      catalog.schema.*           → any table in the schema
+      catalog.schema.table       → exact match
+      catalog.schema.tab*        → wildcard suffix
+    """
+    if not patterns:
+        return False
+    table_fqn = table_fqn.lower()
+    for raw in patterns:
+        pat = raw.lower().strip()
+        if not pat:
+            continue
+        if pat == table_fqn:
+            return True
+        if "*" in pat:
+            rgx = "^" + re.escape(pat).replace(r"\*", ".*") + "$"
+            if re.match(rgx, table_fqn):
+                return True
+    return False
+
+
+def _yolo_log_event(tool: str, payload: dict[str, Any]) -> None:
+    """Best-effort agent_events entry for a YOLO-gated execution."""
+    log.warning(
+        "dbx_yolo_call",
+        extra={"extras": {"tool": tool, "payload": payload}},
+    )
 
 
 # ---------------------------------------------------------------------
@@ -260,6 +329,135 @@ def _h_uc_query_readonly(args: dict, **_kw) -> str:
         return _err(f"{type(exc).__name__}: {exc}")
 
 
+def _h_sql_execute(args: dict, **_kw) -> str:
+    """Run arbitrary SQL (DML/DDL/SELECT) against the configured SQL warehouse.
+
+    Guard model:
+      * WRITES_ENABLED master switch.
+      * Allowlist of catalog.schema.* targets (default = the bundle's own).
+      * YOLO required for destructive verbs (DROP/TRUNCATE/DELETE-without-WHERE/etc.).
+      * Stacked statements rejected (single statement per call).
+
+    SELECT/WITH bypass the write checks and behave like
+    ``databricks_uc_query_readonly`` does — same row limit (default 200,
+    max 5000), same warehouse, same statement_execution API call.
+    """
+    args = args or {}
+    sql = args.get("sql", "")
+    row_limit = args.get("row_limit", 200)
+    cfg = load_cfg()
+
+    if not sql or not sql.strip():
+        return _err("sql is required")
+
+    cleaned = normalise_for_execute(sql)
+    if not cleaned:
+        return _err("empty SQL after stripping comments")
+    if ";" in cleaned:
+        return _err(
+            "multiple statements are not allowed; submit one statement per call",
+            head=cleaned.split(None, 1)[0].upper(),
+        )
+
+    head = cleaned.split(None, 1)[0].upper()
+    is_read = head in {"SELECT", "WITH", "EXPLAIN", "DESCRIBE", "DESC", "SHOW"}
+
+    if not is_read:
+        ok, reason = _writes_allowed(cfg)
+        if not ok:
+            return _err(reason or "writes_disabled", head=head)
+
+        targets = parse_targets(cleaned)
+        allow_patterns = _allowed_write_schemas(cfg)
+        denied = [
+            t for t in targets if not _schema_match(t, allow_patterns)
+        ]
+        if denied:
+            return _err(
+                "sql target(s) not in HERMES_DATABRICKS_WRITE_ALLOWED_SCHEMAS",
+                denied=denied,
+                allowed=allow_patterns,
+                head=head,
+            )
+
+        destructive = find_destructive_verbs(cleaned)
+        if destructive and not _yolo(cfg):
+            return _err(
+                "destructive SQL requires HERMES_DATABRICKS_YOLO=true",
+                destructive=destructive,
+                head=head,
+            )
+        if destructive:
+            _yolo_log_event(
+                "databricks_sql_execute",
+                {"head": head, "destructive": destructive, "targets": targets},
+            )
+
+    warehouse_id = (
+        (args.get("warehouse_id") or "").strip()
+        or os.environ.get("HERMES_DATABRICKS_WAREHOUSE_ID", "").strip()
+    )
+    if not warehouse_id:
+        return _err(
+            "no SQL warehouse configured. Set HERMES_DATABRICKS_WAREHOUSE_ID "
+            "or pass warehouse_id explicitly."
+        )
+
+    try:
+        row_limit = max(1, min(int(row_limit), 5000))
+    except (TypeError, ValueError):
+        row_limit = 200
+
+    log.info(
+        "sql_execute",
+        extra={
+            "extras": {
+                "head": head,
+                "is_read": is_read,
+                "sql_head": cleaned.split("\n", 1)[0][:120],
+                "row_limit": row_limit,
+            }
+        },
+    )
+
+    try:
+        from databricks.sdk.service import sql as sql_mod  # type: ignore
+
+        w = _client()
+        resp = w.statement_execution.execute_statement(
+            statement=cleaned,
+            warehouse_id=warehouse_id,
+            wait_timeout="50s",
+            on_wait_timeout=sql_mod.ExecuteStatementRequestOnWaitTimeout.CANCEL,
+            disposition=sql_mod.Disposition.INLINE,
+            format=sql_mod.Format.JSON_ARRAY,
+            row_limit=row_limit,
+        )
+        state = getattr(getattr(resp, "status", None), "state", None)
+        result = getattr(resp, "result", None)
+        manifest = getattr(resp, "manifest", None)
+        cols: list[dict[str, Any]] = []
+        if manifest is not None and getattr(manifest, "schema", None) is not None:
+            for c in manifest.schema.columns or []:
+                cols.append(
+                    {"name": getattr(c, "name", None), "type_text": getattr(c, "type_text", None)}
+                )
+        rows = getattr(result, "data_array", None) or []
+        return _ok(
+            sql=cleaned,
+            head=head,
+            is_read=is_read,
+            warehouse_id=warehouse_id,
+            row_limit=row_limit,
+            state=str(state or ""),
+            columns=cols,
+            rows=rows,
+            row_count=len(rows),
+        )
+    except Exception as exc:
+        return _err(f"{type(exc).__name__}: {exc}", head=head)
+
+
 def _h_volume_read(args: dict, **_kw) -> str:
     args = args or {}
     path = args.get("path", "")
@@ -329,6 +527,183 @@ def _h_volume_write_agent_note(args: dict, **_kw) -> str:
         return _err(f"{type(exc).__name__}: {exc}", path=target)
 
 
+# ---------------------------------------------------------------------
+# Broad volume primitives (gated by WRITES_ENABLED + YOLO)
+# ---------------------------------------------------------------------
+
+
+def _coerce_content_to_bytes(content: Any) -> bytes:
+    if isinstance(content, str):
+        return content.encode("utf-8")
+    if isinstance(content, (bytes, bytearray)):
+        return bytes(content)
+    return json.dumps(content, default=str).encode("utf-8")
+
+
+def _h_volume_write(args: dict, **_kw) -> str:
+    args = args or {}
+    path = (args.get("path") or "").strip()
+    content = args.get("content", "")
+    overwrite = bool(args.get("overwrite", False))
+    if not path or not path.startswith("/Volumes/"):
+        return _err("path must be an absolute /Volumes/... path")
+
+    cfg = load_cfg()
+    ok, reason = _writes_allowed(cfg)
+    if not ok:
+        return _err(reason or "writes_disabled", path=path)
+
+    allowed = _allowed_write_volumes(cfg)
+    if not _path_match(path, allowed):
+        return _err(
+            "path not in HERMES_DATABRICKS_WRITE_ALLOWED_VOLUMES",
+            allowed_prefixes=allowed,
+            path=path,
+        )
+
+    yolo = _yolo(cfg)
+    data = _coerce_content_to_bytes(content)
+
+    try:
+        w = _client()
+        if overwrite and not yolo:
+            # A non-destructive existence check before forcing overwrite.
+            existed = False
+            try:
+                _ = w.files.get_metadata(path)
+                existed = True
+            except Exception:
+                existed = False
+            if existed:
+                return _err(
+                    "overwrite of existing volume file requires HERMES_DATABRICKS_YOLO=true",
+                    path=path,
+                )
+        if overwrite and yolo:
+            _yolo_log_event("databricks_volume_write", {"path": path, "bytes": len(data)})
+        w.files.upload(path, contents=io.BytesIO(data), overwrite=overwrite or yolo)
+        return _ok(path=path, bytes_written=len(data), overwrite=overwrite or yolo)
+    except Exception as exc:
+        return _err(f"{type(exc).__name__}: {exc}", path=path)
+
+
+def _h_volume_list(args: dict, **_kw) -> str:
+    args = args or {}
+    path = (args.get("path") or "").strip()
+    recursive = bool(args.get("recursive", False))
+    if not path or not path.startswith("/Volumes/"):
+        return _err("path must be an absolute /Volumes/... path")
+
+    cfg = load_cfg()
+    allowed_read = _allowed_volume_prefixes(cfg)
+    allowed_write = _allowed_write_volumes(cfg)
+    allowed = list({*allowed_read, *allowed_write})
+    if not _path_match(path, allowed):
+        return _err(
+            "path not in allowed UC Volume prefixes",
+            allowed_prefixes=allowed,
+            path=path,
+        )
+
+    try:
+        w = _client()
+        out: list[dict[str, Any]] = []
+
+        def _walk(p: str) -> None:
+            try:
+                entries = list(w.files.list_directory_contents(p))
+            except Exception as exc:
+                out.append({"path": p, "error": f"{type(exc).__name__}: {exc}"})
+                return
+            for e in entries:
+                ep = getattr(e, "path", None) or getattr(e, "name", None)
+                if ep is None:
+                    continue
+                is_dir = bool(getattr(e, "is_directory", False))
+                out.append(
+                    {
+                        "path": ep,
+                        "is_directory": is_dir,
+                        "size": getattr(e, "file_size", None),
+                        "modified": str(getattr(e, "last_modified", "") or ""),
+                    }
+                )
+                if recursive and is_dir:
+                    _walk(ep)
+
+        _walk(path)
+        return _ok(path=path, recursive=recursive, count=len(out), entries=out)
+    except Exception as exc:
+        return _err(f"{type(exc).__name__}: {exc}", path=path)
+
+
+def _h_volume_delete(args: dict, **_kw) -> str:
+    args = args or {}
+    path = (args.get("path") or "").strip()
+    if not path or not path.startswith("/Volumes/"):
+        return _err("path must be an absolute /Volumes/... path")
+
+    cfg = load_cfg()
+    ok, reason = _writes_allowed(cfg)
+    if not ok:
+        return _err(reason or "writes_disabled", path=path)
+    if not _yolo(cfg):
+        return _err(
+            "volume delete is destructive and requires HERMES_DATABRICKS_YOLO=true",
+            path=path,
+        )
+
+    allowed = _allowed_write_volumes(cfg)
+    if not _path_match(path, allowed):
+        return _err(
+            "path not in HERMES_DATABRICKS_WRITE_ALLOWED_VOLUMES",
+            allowed_prefixes=allowed,
+            path=path,
+        )
+
+    _yolo_log_event("databricks_volume_delete", {"path": path})
+    try:
+        w = _client()
+        w.files.delete(path)
+        return _ok(path=path, deleted=True)
+    except Exception as exc:
+        return _err(f"{type(exc).__name__}: {exc}", path=path)
+
+
+def _h_volume_mkdir(args: dict, **_kw) -> str:
+    args = args or {}
+    path = (args.get("path") or "").strip()
+    if not path or not path.startswith("/Volumes/"):
+        return _err("path must be an absolute /Volumes/... path")
+
+    cfg = load_cfg()
+    ok, reason = _writes_allowed(cfg)
+    if not ok:
+        return _err(reason or "writes_disabled", path=path)
+
+    allowed = _allowed_write_volumes(cfg)
+    if not _path_match(path, allowed):
+        return _err(
+            "path not in HERMES_DATABRICKS_WRITE_ALLOWED_VOLUMES",
+            allowed_prefixes=allowed,
+            path=path,
+        )
+
+    try:
+        w = _client()
+        # SDK Files API uses create_directory; tolerate older SDKs that
+        # expose it via a slightly different signature.
+        create_dir = getattr(w.files, "create_directory", None)
+        if create_dir is None:
+            return _err(
+                "databricks-sdk does not expose files.create_directory; upgrade the SDK",
+            )
+        create_dir(path)
+        return _ok(path=path, created=True)
+    except Exception as exc:
+        return _err(f"{type(exc).__name__}: {exc}", path=path)
+
+
 def _h_jobs_list(_args: dict, **_kw) -> str:
     try:
         w = _client()
@@ -391,6 +766,54 @@ def _h_terminal(args: dict, **_kw) -> str:
             timeout=timeout,
         )
         return json.dumps(result.to_dict(), ensure_ascii=False, default=str)
+    except Exception as exc:
+        return _err(f"{type(exc).__name__}: {exc}")
+
+
+def _h_python_exec(args: dict, **_kw) -> str:
+    """Run a Python script via the configured terminal backend.
+
+    Optimised for skills that build a short script using the
+    ``databricks-sdk`` (already in the App's requirements) and the App
+    SP's ambient identity. The script lands in
+    ``<HERMES_HOME>/workspace/_python_exec/<uuid>.py`` so it's isolated
+    from the agent's working tree but still inside the
+    ``terminal_backend`` cwd guard.
+
+    No write-gate: the script itself may or may not mutate state — that
+    responsibility falls on the SDK calls inside the script, which use
+    the same App SP credentials as the rest of the runtime. Skills that
+    perform mutations should call ``databricks_sql_execute`` or
+    ``databricks_volume_*`` (which DO gate) rather than dodging the
+    gates via raw Python.
+    """
+    args = args or {}
+    code = args.get("code") or ""
+    timeout = args.get("timeout", 120.0)
+    cfg = load_cfg()
+
+    if not isinstance(code, str) or not code.strip():
+        return _err("code must be a non-empty string")
+
+    try:
+        import uuid as _uuid
+
+        workspace = _term.workspace_dir(cfg.hermes_home)
+        scratch = workspace / "_python_exec"
+        scratch.mkdir(parents=True, exist_ok=True)
+        script_path = scratch / f"{_uuid.uuid4().hex}.py"
+        script_path.write_text(code, encoding="utf-8")
+
+        result = _term.run(
+            ["python3", str(script_path)],
+            backend=cfg.terminal_backend,
+            hermes_home=cfg.hermes_home,
+            cwd="_python_exec",
+            timeout=timeout,
+        )
+        payload = result.to_dict()
+        payload["script_path"] = str(script_path)
+        return json.dumps(payload, ensure_ascii=False, default=str)
     except Exception as exc:
         return _err(f"{type(exc).__name__}: {exc}")
 
@@ -464,6 +887,38 @@ _TOOL_SPECS: list[_ToolSpec] = [
         emoji="🔍",
     ),
     _ToolSpec(
+        name="databricks_sql_execute",
+        description=(
+            "Run a single SQL statement (SELECT, DML, or DDL) against the configured "
+            "SQL warehouse. Requires HERMES_DATABRICKS_WRITES_ENABLED=true for mutating "
+            "statements. Destructive verbs (DROP, TRUNCATE, DELETE without WHERE, "
+            "ALTER ... DROP, CREATE OR REPLACE, REVOKE, VACUUM, PURGE) additionally "
+            "require HERMES_DATABRICKS_YOLO=true. Targets must match "
+            "HERMES_DATABRICKS_WRITE_ALLOWED_SCHEMAS (defaults to the bundle's own "
+            "catalog.schema.*). Stacked queries are rejected."
+        ),
+        parameters={
+            "type": "object",
+            "properties": {
+                "sql": {
+                    "type": "string",
+                    "description": "A single SQL statement (no trailing semicolon).",
+                },
+                "warehouse_id": {
+                    "type": "string",
+                    "description": "Optional override; defaults to HERMES_DATABRICKS_WAREHOUSE_ID.",
+                },
+                "row_limit": {
+                    "type": "integer",
+                    "description": "Maximum rows returned for SELECT/SHOW/DESCRIBE. Default 200, max 5000.",
+                },
+            },
+            "required": ["sql"],
+        },
+        handler=_h_sql_execute,
+        emoji="🛠️",
+    ),
+    _ToolSpec(
         name="databricks_volume_read",
         description="Read a file from a UC Volume (text or base64 if non-UTF8). Restricted to allowed volume prefixes.",
         parameters={
@@ -499,6 +954,90 @@ _TOOL_SPECS: list[_ToolSpec] = [
         },
         handler=_h_volume_write_agent_note,
         emoji="📝",
+    ),
+    _ToolSpec(
+        name="databricks_volume_write",
+        description=(
+            "Write a file to any UC Volume the App SP can write to. The path must "
+            "match HERMES_DATABRICKS_WRITE_ALLOWED_VOLUMES (defaults to the bundle's "
+            "managed volumes) and HERMES_DATABRICKS_WRITES_ENABLED=true. Overwriting "
+            "an existing file requires HERMES_DATABRICKS_YOLO=true."
+        ),
+        parameters={
+            "type": "object",
+            "properties": {
+                "path": {
+                    "type": "string",
+                    "description": "Absolute /Volumes/<catalog>/<schema>/<volume>/... target.",
+                },
+                "content": {
+                    "type": "string",
+                    "description": "File body. Strings are UTF-8 encoded; other JSON values are serialised.",
+                },
+                "overwrite": {
+                    "type": "boolean",
+                    "description": "Force overwrite of an existing target. Requires YOLO.",
+                },
+            },
+            "required": ["path", "content"],
+        },
+        handler=_h_volume_write,
+        emoji="📤",
+    ),
+    _ToolSpec(
+        name="databricks_volume_list",
+        description=(
+            "List the contents of a UC Volume directory the App SP can read. Set "
+            "recursive=true for a deep listing. The path must be allowed by either "
+            "HERMES_DATABRICKS_VOLUME_READ_PREFIXES or HERMES_DATABRICKS_WRITE_ALLOWED_VOLUMES."
+        ),
+        parameters={
+            "type": "object",
+            "properties": {
+                "path": {"type": "string", "description": "Absolute /Volumes/... directory."},
+                "recursive": {
+                    "type": "boolean",
+                    "description": "Walk subdirectories. Default false.",
+                },
+            },
+            "required": ["path"],
+        },
+        handler=_h_volume_list,
+        emoji="📂",
+    ),
+    _ToolSpec(
+        name="databricks_volume_delete",
+        description=(
+            "Delete a file in a UC Volume. ALWAYS destructive — requires both "
+            "HERMES_DATABRICKS_WRITES_ENABLED=true and HERMES_DATABRICKS_YOLO=true. "
+            "Path must be inside HERMES_DATABRICKS_WRITE_ALLOWED_VOLUMES."
+        ),
+        parameters={
+            "type": "object",
+            "properties": {
+                "path": {"type": "string", "description": "Absolute /Volumes/... file path."},
+            },
+            "required": ["path"],
+        },
+        handler=_h_volume_delete,
+        emoji="🗑️",
+    ),
+    _ToolSpec(
+        name="databricks_volume_mkdir",
+        description=(
+            "Create a directory inside a UC Volume the App SP can write to. Requires "
+            "HERMES_DATABRICKS_WRITES_ENABLED=true. Path must be inside "
+            "HERMES_DATABRICKS_WRITE_ALLOWED_VOLUMES."
+        ),
+        parameters={
+            "type": "object",
+            "properties": {
+                "path": {"type": "string", "description": "Absolute /Volumes/... directory to create."},
+            },
+            "required": ["path"],
+        },
+        handler=_h_volume_mkdir,
+        emoji="📁",
     ),
     _ToolSpec(
         name="databricks_jobs_list",
@@ -549,6 +1088,34 @@ _TOOL_SPECS: list[_ToolSpec] = [
         },
         handler=_h_terminal,
         emoji="🖥️",
+    ),
+    _ToolSpec(
+        name="databricks_python_exec",
+        description=(
+            "Run a Python script via the configured terminal backend. The script lands "
+            "in <HERMES_HOME>/workspace/_python_exec/ and runs with the App SP's ambient "
+            "Databricks identity, so `from databricks.sdk import WorkspaceClient; "
+            "w = WorkspaceClient()` works without extra credentials. Skills should use "
+            "this for SDK calls that don't map cleanly onto databricks_sql_execute or "
+            "databricks_volume_*. Mutations performed inside the script bypass the SQL/"
+            "volume write gates, so prefer the gated primitives when they apply."
+        ),
+        parameters={
+            "type": "object",
+            "properties": {
+                "code": {
+                    "type": "string",
+                    "description": "Python source. Must include any imports the script needs.",
+                },
+                "timeout": {
+                    "type": "number",
+                    "description": "Seconds; default 120, max 600.",
+                },
+            },
+            "required": ["code"],
+        },
+        handler=_h_python_exec,
+        emoji="🐍",
     ),
 ]
 

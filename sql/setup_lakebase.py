@@ -66,6 +66,11 @@ DDL_PRELUDE = [
     "CREATE EXTENSION IF NOT EXISTS databricks_auth",
     "CREATE EXTENSION IF NOT EXISTS pg_trgm",
     f'CREATE SCHEMA IF NOT EXISTS "{schema_name}"',
+    # agent_app is a scratchpad for the bundled Databricks skills
+    # (e.g. lakebase_provisioned / lakebase_autoscale recipes) so they
+    # can stand up demo objects without colliding with the production
+    # hermes_session schema. Skills create their own tables inside it.
+    'CREATE SCHEMA IF NOT EXISTS "agent_app"',
     f'SET search_path TO "{schema_name}"',
 ]
 
@@ -298,6 +303,14 @@ if app_sp_client_id:
             f'GRANT ALL ON ALL SEQUENCES IN SCHEMA "{schema_name}" TO "{app_sp_client_id}"',
             f'ALTER DEFAULT PRIVILEGES IN SCHEMA "{schema_name}" GRANT ALL ON TABLES TO "{app_sp_client_id}"',
             f'ALTER DEFAULT PRIVILEGES IN SCHEMA "{schema_name}" GRANT ALL ON SEQUENCES TO "{app_sp_client_id}"',
+            # agent_app: same surface as hermes_session so skills can
+            # build short-lived demo objects (the SP owns whatever it
+            # creates here).
+            f'GRANT USAGE, CREATE ON SCHEMA "agent_app" TO "{app_sp_client_id}"',
+            f'GRANT ALL ON ALL TABLES IN SCHEMA "agent_app" TO "{app_sp_client_id}"',
+            f'GRANT ALL ON ALL SEQUENCES IN SCHEMA "agent_app" TO "{app_sp_client_id}"',
+            f'ALTER DEFAULT PRIVILEGES IN SCHEMA "agent_app" GRANT ALL ON TABLES TO "{app_sp_client_id}"',
+            f'ALTER DEFAULT PRIVILEGES IN SCHEMA "agent_app" GRANT ALL ON SEQUENCES TO "{app_sp_client_id}"',
         ]
         for stmt in grant_stmts:
             try:
