@@ -7,7 +7,7 @@
 # Web framework (FastAPI is compatible with the pydantic version
 # Hermes pins).
 fastapi==0.115.5
-uvicorn[standard]==0.32.1
+uvicorn[standard]==0.47.0
 
 # Databricks
 databricks-sdk==0.105.0
