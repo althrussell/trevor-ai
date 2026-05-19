@@ -230,16 +230,29 @@ class HermesRuntime:
         system_message: Optional[str] = None,
         metadata: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
-        if self.agent is None:
-            raise RuntimeError("Hermes runtime is not initialised")
-
-        # Default session id keeps debug calls grouped.
         if session_id is None:
             session_id = "debug:adhoc"
 
-        # Persist source/user info on first reach to ensure the session
-        # row exists in Lakebase regardless of the conversation_loop's
-        # own create-on-first-use behaviour.
+        # If Hermes itself isn't initialised, fall back to a direct
+        # one-shot model call so /debug/model-turn still proves the
+        # Databricks endpoint is reachable. The fallback uses no tools
+        # and writes no Hermes-shaped session history.
+        if self.agent is None:
+            if self.provider is None:
+                raise RuntimeError(
+                    "Neither the Hermes AIAgent nor the Databricks "
+                    "provider is initialised. See /debug/runtime.errors."
+                )
+            from hermes_databricks.databricks_provider import quick_chat
+            payload = quick_chat(self.provider, message=user_message, system=system_message)
+            payload["session_id"] = session_id
+            payload["mode"] = "direct"
+            payload["metadata"] = metadata or {}
+            self._persist_direct_turn(session_id, user_message, payload, metadata or {})
+            return payload
+
+        # Persist source/user info first so the session row exists in
+        # Lakebase regardless of Hermes' create-on-first-use behaviour.
         if self.session_db is not None:
             try:
                 self.session_db.ensure_session(
@@ -250,10 +263,6 @@ class HermesRuntime:
             except Exception:
                 log.exception("ensure_session failed")
 
-        # We can't reuse the same AIAgent instance for two concurrent
-        # sessions safely; the caller is responsible for serialising
-        # requests per session. The debug endpoint serialises via
-        # asyncio.to_thread + a default per-process lock implicitly.
         agent = self.agent
         agent.session_id = session_id  # type: ignore[attr-defined]
 
@@ -265,14 +274,52 @@ class HermesRuntime:
 
         if isinstance(result, dict):
             text = result.get("response") or result.get("text") or result.get("content") or ""
+            usage = result.get("usage") or {}
         else:
             text = str(result)
+            usage = {}
 
         return {
             "session_id": session_id,
             "text": text,
+            "usage": usage,
+            "mode": "hermes",
             "metadata": metadata or {},
         }
+
+    def _persist_direct_turn(
+        self,
+        session_id: str,
+        user_message: str,
+        payload: Dict[str, Any],
+        metadata: Dict[str, Any],
+    ) -> None:
+        """Best-effort persistence for fallback direct-turn calls."""
+        if self.session_db is None:
+            return
+        try:
+            self.session_db.ensure_session(
+                session_id=session_id,
+                source=metadata.get("source", "direct"),
+                model=self.cfg.llm_endpoint,
+            )
+            self.session_db.append_message(session_id, role="user", content=user_message)
+            self.session_db.append_message(
+                session_id,
+                role="assistant",
+                content=payload.get("text", ""),
+                finish_reason=payload.get("finish_reason"),
+            )
+            usage = payload.get("usage") or {}
+            self.session_db.update_token_counts(
+                session_id,
+                input_tokens=int(usage.get("prompt_tokens") or 0),
+                output_tokens=int(usage.get("completion_tokens") or 0),
+                model=self.cfg.llm_endpoint,
+                api_call_count=1,
+            )
+        except Exception:
+            log.exception("direct-turn persistence failed")
 
     def status(self) -> Dict[str, Any]:
         try:
