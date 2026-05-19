@@ -44,6 +44,7 @@ def test_workspace_is_cwd(home: Path) -> None:
 def test_cwd_escape_is_rejected(home: Path) -> None:
     result = tb.run([sys.executable, "-c", "print(1)"], hermes_home=home, cwd="../../etc")
     assert result.ok is False
+    # _validate_cwd raises ValueError → caught and surfaced in note
     assert "escapes workspace" in result.note
 
 

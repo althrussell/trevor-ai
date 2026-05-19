@@ -158,7 +158,13 @@ def _run_in_app(
 ) -> TerminalResult:
     home = Path(hermes_home or os.environ.get("HERMES_HOME") or "/tmp/hermes_cache/hermes_home").resolve()
     workspace = workspace_dir(home)
-    final_cwd = _validate_cwd(workspace, cwd)
+    try:
+        final_cwd = _validate_cwd(workspace, cwd)
+    except ValueError as exc:
+        return TerminalResult(
+            ok=False, backend="in_app_subprocess", cmd=cmd, cwd="", exit_code=None,
+            stdout="", stderr="", note=str(exc),
+        )
 
     timeout = max(1.0, min(float(timeout or DEFAULT_TIMEOUT_SECONDS), HARD_TIMEOUT_SECONDS))
 
