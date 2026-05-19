@@ -20,7 +20,7 @@ import os
 import sys
 import time
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 from hermes_databricks.config import Config
 
@@ -352,12 +352,38 @@ class HermesRuntime:
 
     def tool_summary(self) -> Dict[str, Any]:
         from hermes_databricks.tools.backend_registry import describe_backends
+        from hermes_databricks.tools.databricks_toolset import tool_names as _db_tool_names
+
         out = describe_backends(self.cfg)
+        out["databricks_native_tools"] = _db_tool_names()
+
         try:
             from tools.registry import registry as _registry  # type: ignore
-            out["registered_tools"] = len(getattr(_registry, "_tools", {}))
         except Exception:
-            out["registered_tools"] = None
+            out["registry"] = {"available": False, "reason": "Hermes tool registry not importable"}
+            return out
+
+        try:
+            all_names = _registry.get_all_tool_names()
+            tool_to_ts = _registry.get_tool_to_toolset_map()
+            ts_avail = _registry.check_toolset_requirements()
+            grouped: Dict[str, List[str]] = {}
+            for name in all_names:
+                ts = tool_to_ts.get(name, "unknown")
+                grouped.setdefault(ts, []).append(name)
+            out["registry"] = {
+                "available": True,
+                "tool_count": len(all_names),
+                "toolset_count": len(grouped),
+                "toolset_availability": ts_avail,
+                "tools_by_toolset": grouped,
+            }
+            if self.agent is not None:
+                enabled_tools = sorted(getattr(self.agent, "selected_tools", []) or [])
+                out["registry"]["selected_tools"] = enabled_tools
+                out["registry"]["selected_tool_count"] = len(enabled_tools)
+        except Exception as exc:  # noqa: BLE001
+            out["registry"] = {"available": False, "reason": f"{type(exc).__name__}: {exc}"}
         return out
 
     def cron_summary(self) -> Dict[str, Any]:

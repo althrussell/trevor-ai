@@ -151,6 +151,7 @@ structured "backend required" diagnostic when invoked.
 | `databricks_uc_query_readonly` | same | `WorkspaceClient().statement_execution.execute_statement(...)` | works-in-app | medium | SELECT/WITH-only; row limit; allowlist; warehouse id required |
 | `databricks_jobs_list` | same | `WorkspaceClient().jobs.list()` | works-in-app | low | Filtered by SP visibility |
 | `databricks_jobs_run_allowlist` | same | `WorkspaceClient().jobs.run_now(job_id)` | works-in-app | medium | Job id allowlist enforced |
+| `databricks_terminal` | `hermes_databricks.tools.terminal_backend` | `in_app_subprocess` (default), `databricks_job`, `external_sandbox` | works-in-app | medium | Same guardrails as Hermes' `terminal`: cwd under `<HERMES_HOME>/workspace`, default 60s timeout, 600s hard cap, 64KB output cap, command denylist for `rm/dd/mkfs/shutdown/...` |
 
 ## Backend availability checks
 

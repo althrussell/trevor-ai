@@ -80,25 +80,38 @@ class BackendStatus:
 
 def describe_backends(cfg: Config) -> Dict[str, Any]:
     """Summarise the configured backends — drives ``/debug/tools``."""
+    from hermes_databricks.tools import browser_backend, mcp_backend
+
     terminal = BackendStatus(
         backend="terminal",
         selected=cfg.terminal_backend,
-        available=cfg.terminal_backend in {"in_app_subprocess"},
-        reason="" if cfg.terminal_backend == "in_app_subprocess" else "Only in_app_subprocess is wired in Phase 7",
+        available=cfg.terminal_backend == "in_app_subprocess",
+        reason=(
+            "Default in-app subprocess backend (cwd restricted, 60s default timeout)."
+            if cfg.terminal_backend == "in_app_subprocess"
+            else (
+                "Only in_app_subprocess is wired today; "
+                f"selected={cfg.terminal_backend!r}"
+            )
+        ),
     )
+
+    b_desc = browser_backend.describe(cfg.browser_backend)
     browser = BackendStatus(
         backend="browser",
         selected=cfg.browser_backend,
-        available=False,
-        reason=("disabled by HERMES_DATABRICKS_BROWSER_BACKEND=disabled"
-                if cfg.browser_backend == "disabled" else "backend not yet wired"),
+        available=bool(b_desc.get("available")),
+        reason=b_desc.get("reason", ""),
+        detail=b_desc,
     )
+
+    m_desc = mcp_backend.describe(cfg.mcp_enabled)
     mcp = BackendStatus(
         backend="mcp",
-        selected="remote_http" if cfg.mcp_enabled else "disabled",
-        available=False,
-        reason=("disabled by HERMES_DATABRICKS_MCP_ENABLED=false"
-                if not cfg.mcp_enabled else "remote HTTP backend not yet wired"),
+        selected="enabled" if cfg.mcp_enabled else "disabled",
+        available=bool(cfg.mcp_enabled),
+        reason=m_desc.get("reason", ""),
+        detail=m_desc,
     )
 
     return {
