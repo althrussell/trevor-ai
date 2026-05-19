@@ -284,11 +284,60 @@ def _scrub_integer_schema_constraints(node: Any) -> int:
     return removed
 
 
+def _scrub_internal_message_fields(
+    messages: list[Any],
+) -> tuple[list[Any], int, set[str]]:
+    """Strip Hermes-internal keys (any underscore-prefixed key) from each message.
+
+    Returns ``(new_messages, removed_count, removed_keys)``. The OpenAI chat
+    spec has no ``_``-prefixed message fields, but Hermes tags its scaffolding
+    messages with private flags (e.g. ``_empty_recovery_synthetic``,
+    ``_empty_terminal_sentinel``, ``_thinking_prefill``). Vanilla OpenAI
+    silently ignores them, but Databricks Model Serving's Go proxy enforces
+    ``json: DisallowUnknownFields`` and 400s with
+    ``Bad request: json: unknown field "_empty_recovery_synthetic"``.
+
+    Copy-on-write: only allocates a new list/dict when something is actually
+    stripped, so the steady-state hot path stays allocation-free.
+    """
+    removed = 0
+    removed_keys: set[str] = set()
+    new_messages = messages
+    list_copied = False
+    for idx, msg in enumerate(messages):
+        if not isinstance(msg, dict):
+            continue
+        bad_keys = [k for k in msg if isinstance(k, str) and k.startswith("_")]
+        if not bad_keys:
+            continue
+        if not list_copied:
+            new_messages = list(messages)
+            list_copied = True
+        cleaned = {k: v for k, v in msg.items() if k not in bad_keys}
+        new_messages[idx] = cleaned
+        removed += len(bad_keys)
+        removed_keys.update(bad_keys)
+    return new_messages, removed, removed_keys
+
+
 def _sanitise_oai_kwargs(kwargs: dict[str, Any]) -> dict[str, Any]:
     """Return a copy of *kwargs* safe to send to Databricks Model Serving."""
     if "stream_options" in kwargs:
         kwargs = dict(kwargs)
         kwargs.pop("stream_options", None)
+
+    messages = kwargs.get("messages")
+    if isinstance(messages, list) and messages:
+        scrubbed, removed, removed_keys = _scrub_internal_message_fields(messages)
+        if removed:
+            kwargs = dict(kwargs)
+            kwargs["messages"] = scrubbed
+            log.debug(
+                "Stripped %d internal message field(s) %s from %d outbound message(s)",
+                removed,
+                sorted(removed_keys),
+                len(scrubbed),
+            )
 
     tools = kwargs.get("tools")
     if isinstance(tools, list) and tools:
@@ -347,7 +396,8 @@ def _install_request_sanitiser(oai_client: Any) -> None:
         log.info(
             "Installed Databricks request sanitiser on "
             "openai.resources.chat.completions.Completions.create "
-            "(strips stream_options + integer-schema constraints)"
+            "(strips stream_options + integer-schema constraints "
+            "+ underscore-prefixed message keys)"
         )
     except Exception:
         log.exception("Failed to install Databricks OpenAI sanitiser")
