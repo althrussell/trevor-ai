@@ -36,15 +36,19 @@ variables:
 
   llm_endpoint:
     description: Databricks Model Serving endpoint name to use as the default model.
-    default: databricks-gpt-oss-120b
+    default: databricks-qwen35-122b-a10b
 
   secrets_scope:
     description: Databricks Secrets scope holding Telegram token + optional provider keys.
     default: hermes_agent
 
   lakebase_instance:
-    description: Lakebase database instance name.
-    default: hermes-db
+    description: Lakebase database instance name. Must match HERMES_DATABRICKS_LAKEBASE_INSTANCE in app/app.yaml.
+    default: trevor-db
+
+  lakebase_database:
+    description: Lakebase Postgres database name inside the instance.
+    default: databricks_postgres
 
   hermes_home_volume:
     description: UC Volume name backing HERMES_HOME (config, skills, cron, memories, logs).
@@ -75,8 +79,12 @@ variables:
     default: disabled
 
   mcp_enabled:
-    description: Whether to enable MCP tools. Requires HERMES_DATABRICKS_MCP_ENABLED=true at runtime too.
-    default: "false"
+    description: |
+      Whether to enable MCP tools. When true, the runtime writes
+      HERMES_HOME/config.yaml with the Databricks managed SQL MCP
+      server (https://<workspace>/api/2.0/mcp/sql) wired up using the
+      App service principal's bearer token.
+    default: "true"
 
   telegram_enabled:
     description: Whether to start the Telegram long-polling loop at boot.
@@ -105,6 +113,9 @@ targets:
     variables:
       heartbeat_seconds: 180
       daily_token_cap: 100000
+      # The shared "Serverless Starter Warehouse" on the Free Edition
+      # workspace. Override via --var warehouse_id=<id> if it changes.
+      warehouse_id: "9a444167489c1f75"
       # Free Edition stays read-only by default: no broad privilege escalation
       # on the shared Free workspace. Operator can flip per-deploy via --var.
       writes_enabled: "false"

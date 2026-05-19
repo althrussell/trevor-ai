@@ -153,7 +153,21 @@ class Lakebase:
         if self._instance_dns is not None:
             return self._instance_dns
         w = self._workspace_client()
-        instance = w.database.get_database_instance(name=self.instance_name)
+        try:
+            instance = w.database.get_database_instance(name=self.instance_name)
+        except Exception as exc:
+            # The SDK raises ``NotFound`` for both "instance doesn't exist"
+            # and "caller lacks DATABASE_USAGE on the instance". The latter
+            # is the common Databricks Apps failure mode: the App's
+            # service principal needs the ``lakebase-instance`` resource
+            # binding in ``resources/app.yml`` to receive DATABASE_USAGE.
+            raise RuntimeError(
+                f"Lakebase instance '{self.instance_name}' not visible to the App "
+                f"service principal. Either the instance was renamed/deleted, or "
+                f"the App is missing the `lakebase-instance` resource binding "
+                f"(see resources/app.yml). Underlying error: "
+                f"{type(exc).__name__}: {exc}"
+            ) from exc
         dns = getattr(instance, "read_write_dns", None) or getattr(instance, "host", None)
         if not dns:
             raise RuntimeError(f"Lakebase instance '{self.instance_name}' has no DNS record")

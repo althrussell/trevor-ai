@@ -212,6 +212,19 @@ class LakebaseSessionDB:
         skipped = 0
         applied = 0
         with self.lakebase.cursor() as cur:
+            # Set the search_path BEFORE any unqualified CREATE TABLE /
+            # CREATE INDEX runs, so the statements know which schema
+            # they target. If the schema doesn't exist yet (e.g. the
+            # setup_lakebase job hasn't been run), CREATE SCHEMA below
+            # will fail with permission denied (Free Edition SP) — we
+            # tolerate that and rely on the operator to run
+            # ``databricks bundle run setup_lakebase``.
+            try:
+                cur.execute(f'SET search_path TO "{self.schema}"')
+                self._search_path_set = True
+            except Exception as exc:
+                log.warning("Could not set search_path to '%s' yet: %s", self.schema, exc)
+
             for stmt in statements:
                 try:
                     cur.execute(stmt)
@@ -233,6 +246,7 @@ class LakebaseSessionDB:
                         or "must be owner" in msg
                         or "already exists" in msg
                         or "does not exist" in msg  # gin_trgm_ops missing
+                        or "no schema has been selected" in msg
                     )
                     if is_create and tolerable:
                         skipped += 1

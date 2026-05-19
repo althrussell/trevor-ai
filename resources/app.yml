@@ -6,6 +6,21 @@ resources:
       description: "Hermes Agent (${var.agent_name}) running on Databricks Free Edition."
       config:
         env:
+          # IMPORTANT: Databricks Apps deployed via DAB only honour env
+          # vars declared *here* (under ``config.env``). The top-level
+          # ``env:`` block in ``app/app.yaml`` is NOT injected into the
+          # running process. Any setting that differs from the
+          # ``Config`` dataclass default in ``app/hermes_databricks/config.py``
+          # MUST be wired here, or the runtime silently falls back to
+          # the dataclass default.
+          - name: HERMES_DATABRICKS_LLM_ENDPOINT
+            value: ${var.llm_endpoint}
+          - name: HERMES_DATABRICKS_LAKEBASE_INSTANCE
+            value: ${var.lakebase_instance}
+          - name: HERMES_DATABRICKS_WAREHOUSE_ID
+            value: ${var.warehouse_id}
+          - name: HERMES_DATABRICKS_MCP_ENABLED
+            value: ${var.mcp_enabled}
           # Per-target overrides for the Databricks-ops gates. Defaults
           # in app.yaml are safe (false/false); bundle vars in
           # databricks.yml flip them per target without editing

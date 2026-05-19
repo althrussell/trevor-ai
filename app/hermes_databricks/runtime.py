@@ -85,6 +85,19 @@ class HermesRuntime:
             except Exception:
                 log.exception("seed_if_empty pass failed (continuing without seeded skills)")
                 self.errors["uc_volume_skill_seed"] = "see logs"
+
+            # Seed top-level HERMES_HOME files (soul.md, etc.) shipped
+            # under ``app/seeds/home/``. Idempotent: existing files are
+            # left alone so the operator can edit them via the volume.
+            try:
+                home_seed_root = _Path(__file__).resolve().parent.parent / "seeds" / "home"
+                if home_seed_root.exists():
+                    for seed_file in sorted(p for p in home_seed_root.iterdir() if p.is_file()):
+                        result = self.home_fs.seed_file_if_missing(seed_file, seed_file.name)
+                        log.info("HERMES_HOME file seed pass", extra={"extras": result})
+            except Exception:
+                log.exception("HERMES_HOME root file seed failed (continuing)")
+                self.errors["uc_volume_home_seed"] = "see logs"
         except Exception as exc:
             log.exception("UCVolumeHome unavailable")
             self.errors["uc_volume"] = f"{type(exc).__name__}: {exc}"
@@ -92,6 +105,25 @@ class HermesRuntime:
         # Ensure HERMES_HOME env is set before anything in Hermes touches it.
         os.environ["HERMES_HOME"] = str(self.cfg.hermes_home)
         self.cfg.hermes_home.mkdir(parents=True, exist_ok=True)
+
+        # MCP bootstrap: when enabled, write the Databricks managed
+        # SQL MCP server into HERMES_HOME/config.yaml so the agent can
+        # discover Unity Catalog tables/catalogs/schemas via MCP. Token
+        # rotation is handled by the supervisor heartbeat.
+        try:
+            from hermes_databricks.mcp_bootstrap import refresh_mcp_config
+
+            mcp_status = refresh_mcp_config(self.cfg)
+            log.info("MCP bootstrap pass", extra={"extras": mcp_status})
+            if (
+                self.cfg.mcp_enabled
+                and not mcp_status.get("applied")
+                and mcp_status.get("reason")
+            ):
+                self.errors["mcp_bootstrap"] = str(mcp_status.get("reason"))
+        except Exception as exc:
+            log.exception("MCP bootstrap failed")
+            self.errors["mcp_bootstrap"] = f"{type(exc).__name__}: {exc}"
 
         # Phase 4: Lakebase SessionDB
         try:

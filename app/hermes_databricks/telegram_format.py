@@ -50,6 +50,16 @@ _ITALIC_STAR_RE = re.compile(r"(?<!\*)\*(?!\s|\*)([^*\n<>]+?)(?<!\s)\*(?!\*)")
 _ITALIC_UNDER_RE = re.compile(r"(?<![\w_])_(?!\s|_)([^_\n<>]+?)(?<!\s)_(?![\w_])")
 _STRIKE_RE = re.compile(r"~~(?!\s)([^~\n]+?)(?<!\s)~~")
 
+# GFM pipe-table detection. The separator line is the unambiguous signal:
+# ``|---|---|`` (with optional alignment colons). Without it we treat a
+# pipe-bearing line as ordinary prose, which avoids false positives on
+# things like ``foo | bar`` written in regular text.
+_TABLE_ROW_RE = re.compile(r"^[ \t]*\|.*\|[ \t]*$|^[ \t]*\|[^\n]+$")
+_TABLE_SEPARATOR_RE = re.compile(
+    r"^[ \t]*\|?[ \t]*:?-{2,}:?[ \t]*"
+    r"(?:\|[ \t]*:?-{2,}:?[ \t]*)+\|?[ \t]*$"
+)
+
 _PLACEHOLDER_RE = re.compile(r"\x00PH(\d+)\x00")
 
 
@@ -132,8 +142,15 @@ def md_to_telegram_html(text: str) -> str:
 
     text = _LINK_RE.sub(link_sub, text)
 
-    # 10. Restore stashed snippets. Run in a loop because a link
-    #     placeholder embeds a URL placeholder.
+    # 10. Tables → bullet list (2-col) or padded <pre> block (3+-col).
+    #     Runs last so cells already have <b>/<i>/<code>/<a> wrapped,
+    #     and we stash the result so the placeholder-restore loop
+    #     below treats it as opaque.
+    text = _convert_tables(text, stash)
+
+    # 11. Restore stashed snippets. Run in a loop because a link
+    #     placeholder embeds a URL placeholder, and a stashed table
+    #     can embed inline-code placeholders.
     while _PLACEHOLDER_RE.search(text):
         text = _PLACEHOLDER_RE.sub(lambda m: placeholders[int(m.group(1))], text)
 
@@ -159,6 +176,11 @@ def strip_markdown(text: str) -> str:
     text = _HEADING_RE.sub(lambda m: m.group(2).strip(), text)
     # Bullets → "• ".
     text = _BULLET_RE.sub(lambda m: f"{m.group(1)}• ", text)
+    # Tables → flatten. 2-col tables become "• key: value" lines; wider
+    # tables become " | "-joined cells. The point is to drop the
+    # separator row and the surrounding pipes so the user doesn't see
+    # raw markdown in the fallback path.
+    text = _strip_tables(text)
     # Bold markers.
     text = re.sub(r"\*\*|__", "", text)
     # Italic markers (same boundary rules as the HTML path).
@@ -169,5 +191,164 @@ def strip_markdown(text: str) -> str:
     return text
 
 
+def _strip_tables(text: str) -> str:
+    lines = text.split("\n")
+    out: list[str] = []
+    i = 0
+    n = len(lines)
+    while i < n:
+        if (
+            i + 1 < n
+            and _TABLE_ROW_RE.match(lines[i])
+            and "|" in lines[i]
+            and _TABLE_SEPARATOR_RE.match(lines[i + 1])
+        ):
+            header_cells = _split_table_row(lines[i])
+            sep_cells = _split_table_row(lines[i + 1])
+            if len(header_cells) != len(sep_cells) or len(header_cells) < 2:
+                out.append(lines[i])
+                i += 1
+                continue
+
+            body: list[list[str]] = []
+            j = i + 2
+            while j < n and _TABLE_ROW_RE.match(lines[j]) and "|" in lines[j]:
+                row = _split_table_row(lines[j])
+                if len(row) < len(header_cells):
+                    row += [""] * (len(header_cells) - len(row))
+                elif len(row) > len(header_cells):
+                    row = row[: len(header_cells)]
+                body.append(row)
+                j += 1
+
+            if len(header_cells) == 2:
+                if body:
+                    out.extend(f"• {row[0]}: {row[1]}" for row in body)
+                else:
+                    out.append(f"{header_cells[0]}: {header_cells[1]}")
+            else:
+                out.append(" | ".join(header_cells))
+                out.extend(" | ".join(r) for r in body)
+            i = j
+        else:
+            out.append(lines[i])
+            i += 1
+    return "\n".join(out)
+
+
 def _looks_like_url(s: str) -> bool:
     return s.startswith(("http://", "https://", "tg://", "mailto:"))
+
+
+def _bold_key(cell: str) -> str:
+    """Emphasise a 2-col bullet's key cell without double-wrapping.
+
+    If the cell already contains formatting — either an inline tag
+    injected by an earlier pass (``<b>``/``<i>``/``<a>``...) or a
+    stashed placeholder that will expand to ``<code>``/``<pre>``/a
+    URL — leave it alone. Otherwise wrap in ``<b>``.
+    """
+    if "<" in cell or "\x00PH" in cell:
+        return cell
+    return f"<b>{cell}</b>"
+
+
+def _split_table_row(row: str) -> list[str]:
+    """Split a pipe-delimited row into trimmed cells.
+
+    Surrounding pipes (``| a | b |``) and trailing whitespace are
+    stripped. Cells are kept verbatim otherwise — including any HTML
+    tags introduced by earlier passes.
+    """
+    stripped = row.strip()
+    if stripped.startswith("|"):
+        stripped = stripped[1:]
+    if stripped.endswith("|"):
+        stripped = stripped[:-1]
+    return [cell.strip() for cell in stripped.split("|")]
+
+
+def _convert_tables(text: str, stash):
+    """Detect GFM pipe tables and replace them with stashed renderings.
+
+    Two-column tables → bullet list (``• <b>k</b>: v``). Three-or-more
+    column tables → ``<pre>`` block with cells padded to the widest
+    value in their column so columns line up under Telegram's
+    monospace renderer.
+
+    Lines that aren't part of a table are passed through unchanged.
+    """
+    lines = text.split("\n")
+    out: list[str] = []
+    i = 0
+    n = len(lines)
+    while i < n:
+        # A table requires a row line followed immediately by a
+        # separator line. Both must contain at least one ``|``.
+        if (
+            i + 1 < n
+            and _TABLE_ROW_RE.match(lines[i])
+            and "|" in lines[i]
+            and _TABLE_SEPARATOR_RE.match(lines[i + 1])
+        ):
+            header_cells = _split_table_row(lines[i])
+            sep_cells = _split_table_row(lines[i + 1])
+            # The header and separator must agree on column count for
+            # the block to be a real GFM table. Otherwise we treat the
+            # current line as ordinary prose and move on.
+            if len(header_cells) != len(sep_cells) or len(header_cells) < 2:
+                out.append(lines[i])
+                i += 1
+                continue
+
+            body: list[list[str]] = []
+            j = i + 2
+            while j < n and _TABLE_ROW_RE.match(lines[j]) and "|" in lines[j]:
+                row_cells = _split_table_row(lines[j])
+                # Pad / truncate to header width so misaligned rows
+                # don't crash the renderer.
+                if len(row_cells) < len(header_cells):
+                    row_cells += [""] * (len(header_cells) - len(row_cells))
+                elif len(row_cells) > len(header_cells):
+                    row_cells = row_cells[: len(header_cells)]
+                body.append(row_cells)
+                j += 1
+
+            rendered = _render_table(header_cells, body)
+            out.append(stash(rendered))
+            i = j
+        else:
+            out.append(lines[i])
+            i += 1
+    return "\n".join(out)
+
+
+def _render_table(header: list[str], body: list[list[str]]) -> str:
+    """Render a parsed table into Telegram-flavoured HTML."""
+    if len(header) == 2:
+        # 2-column → bullet list. Drop the header; LLM-emitted 2-col
+        # tables are almost always "name → description" and the values
+        # are self-describing.
+        if not body:
+            # Header-only edge case: surface it as a single bold line.
+            return f"{_bold_key(header[0])}: {header[1]}"
+        lines = [f"• {_bold_key(row[0])}: {row[1]}" for row in body]
+        return "\n".join(lines)
+
+    # 3+ columns → padded monospace block. We pad on display-width
+    # ignoring tags, but the cells in this codebase only contain
+    # HTML if earlier passes injected ``<b>``/``<i>``/``<code>`` —
+    # Telegram renders those as zero-width formatting in ``<pre>`` so
+    # padding by raw character length over-aligns slightly. That's
+    # acceptable for a chat client; we don't want a full HTML
+    # length-stripping pass here.
+    rows = [header, *body]
+    col_widths = [max(len(row[c]) for row in rows) for c in range(len(header))]
+    sep_row = "-+-".join("-" * w for w in col_widths)
+
+    def fmt_row(row: list[str]) -> str:
+        return " | ".join(row[c].ljust(col_widths[c]) for c in range(len(header)))
+
+    lines = [fmt_row(header), sep_row]
+    lines.extend(fmt_row(r) for r in body)
+    return "<pre>" + "\n".join(lines) + "</pre>"

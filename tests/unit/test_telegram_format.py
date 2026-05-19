@@ -160,3 +160,66 @@ def test_strip_markdown_preserves_code_block_body():
 
 def test_strip_markdown_converts_bullets_to_dot():
     assert strip_markdown("- one\n- two") == "• one\n• two"
+
+
+def test_two_column_table_renders_as_bullet_list():
+    src = "| name | description |\n|------|-------------|\n| foo | first |\n| bar | second |"
+    out = md_to_telegram_html(src)
+    assert out == "• <b>foo</b>: first\n• <b>bar</b>: second"
+
+
+def test_two_column_table_keeps_inline_code_in_cell():
+    src = "| key | value |\n|-----|-------|\n| `id` | 42 |"
+    out = md_to_telegram_html(src)
+    # Inline code in the key cell already produces a tag, so the
+    # bullet renderer must not add another <b> around it.
+    assert out == "• <code>id</code>: 42"
+
+
+def test_two_column_table_keeps_bold_in_cell_without_double_wrapping():
+    src = "| name | description |\n|------|-------------|\n| **default** | auto-created |"
+    out = md_to_telegram_html(src)
+    assert out == "• <b>default</b>: auto-created"
+    assert "<b><b>" not in out
+
+
+def test_three_column_table_renders_as_padded_pre_block():
+    src = "| name | type | count |\n|------|------|-------|\n| a | int | 5 |\n| bb | str | 10 |"
+    out = md_to_telegram_html(src)
+    assert out.startswith("<pre>")
+    assert out.endswith("</pre>")
+    # Header row appears verbatim with " | " column joiner.
+    assert "name | type | count" in out
+    # Separator row uses dashes + plus signs.
+    assert "----+------+-----" in out
+    # Column widths are computed from the widest cell (bb is 2 chars,
+    # 10 is 2 chars), so the narrowest column is padded to 4 ("name").
+    assert "a    | int  | 5" in out
+    assert "bb   | str  | 10" in out
+
+
+def test_three_column_table_escapes_html_inside_cells():
+    src = "| col | a | b |\n|-----|---|---|\n| <x> | 1 | 2 |"
+    out = md_to_telegram_html(src)
+    assert "&lt;x&gt;" in out
+    assert "<x>" not in out.replace("<pre>", "").replace("</pre>", "")
+
+
+def test_plain_pipes_in_prose_are_not_detected_as_a_table():
+    src = "Available options: foo | bar | baz."
+    out = md_to_telegram_html(src)
+    assert out == "Available options: foo | bar | baz."
+
+
+def test_table_immediately_after_paragraph_still_detected():
+    src = "Here are the schemas:\n| name | description |\n|------|-------------|\n| foo | bar |"
+    out = md_to_telegram_html(src)
+    assert out == "Here are the schemas:\n• <b>foo</b>: bar"
+
+
+def test_strip_markdown_flattens_two_column_table_to_plain_bullets():
+    src = "| name | description |\n|------|-------------|\n| foo | first |\n| bar | second |"
+    out = strip_markdown(src)
+    assert out == "• foo: first\n• bar: second"
+    assert "|" not in out
+    assert "---" not in out

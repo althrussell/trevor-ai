@@ -270,6 +270,27 @@ def main() -> int:
             "strip_markdown removes emphasis markers",
         )
 
+        two_col_html = md_to_telegram_html("| a | b |\n|---|---|\n| 1 | 2 |\n| 3 | 4 |")
+        assert_(
+            two_col_html == "• <b>1</b>: 2\n• <b>3</b>: 4",
+            "2-col table renders as bullet list with bolded key",
+        )
+
+        three_col_html = md_to_telegram_html(
+            "| name | type | count |\n|------|------|-------|\n| a | int | 5 |"
+        )
+        assert_(
+            three_col_html.startswith("<pre>")
+            and three_col_html.endswith("</pre>")
+            and "name | type | count" in three_col_html,
+            "3-col table renders as a single <pre> block with padded columns",
+        )
+
+        assert_(
+            md_to_telegram_html("foo | bar | baz") == "foo | bar | baz",
+            "plain pipes in prose are not detected as a table",
+        )
+
     # ------------------------------------------------------------------
     # Telegram allowlist (needs httpx — skipped if not installed locally)
     # ------------------------------------------------------------------

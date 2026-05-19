@@ -261,6 +261,24 @@ class HermesSupervisor:
                         if refreshed:
                             last_token_refresh = now
                             log.debug("Databricks bearer token refreshed via heartbeat")
+                            # Re-mint the MCP bearer too so the
+                            # managed SQL MCP server keeps working
+                            # past the 1h token expiry.
+                            if self.cfg.mcp_enabled:
+                                try:
+                                    from hermes_databricks.mcp_bootstrap import (
+                                        refresh_mcp_config,
+                                    )
+
+                                    mcp_status = await asyncio.to_thread(
+                                        refresh_mcp_config, self.cfg
+                                    )
+                                    log.debug(
+                                        "MCP config rewritten via heartbeat",
+                                        extra={"extras": mcp_status},
+                                    )
+                                except Exception:
+                                    log.exception("MCP config refresh failed")
                 except Exception:
                     log.exception("Bearer-token refresh failed")
                 if (

@@ -370,6 +370,75 @@ class UCVolumeHome:
 
         return result
 
+    def seed_file_if_missing(
+        self,
+        seed_file: Path,
+        target_subpath: str,
+        *,
+        push: bool = True,
+    ) -> dict[str, Any]:
+        """Copy ``seed_file`` into ``<HERMES_HOME>/<target_subpath>`` if missing.
+
+        Companion to :meth:`seed_if_empty` for single files (e.g.
+        ``soul.md``, ``config.yaml``) that don't fit the per-skill
+        directory pattern. Idempotent: a second call is a no-op once
+        the destination exists.
+        """
+        seed_file = Path(seed_file)
+        result: dict[str, Any] = {
+            "target_subpath": target_subpath,
+            "seed_file": str(seed_file),
+            "seeded": False,
+            "bytes_copied": 0,
+            "skipped_reason": None,
+        }
+
+        if not seed_file.exists() or not seed_file.is_file():
+            result["skipped_reason"] = "seed_file_missing"
+            return result
+
+        try:
+            local_target = self._resolve_local(target_subpath)
+        except ValueError as exc:
+            result["skipped_reason"] = f"invalid_target: {exc}"
+            return result
+
+        if local_target.exists():
+            result["skipped_reason"] = "target_exists"
+            return result
+
+        with self._lock:
+            local_target.parent.mkdir(parents=True, exist_ok=True)
+            try:
+                data = seed_file.read_bytes()
+            except OSError as exc:
+                result["skipped_reason"] = f"read_failed: {exc}"
+                return result
+            local_target.write_bytes(data)
+            result["seeded"] = True
+            result["bytes_copied"] = len(data)
+            log.info(
+                "seeded HERMES_HOME file",
+                extra={
+                    "extras": {
+                        "target_subpath": target_subpath,
+                        "bytes_copied": result["bytes_copied"],
+                    }
+                },
+            )
+
+            if push and self._is_durable(target_subpath):
+                try:
+                    push_result = self.touch_subpath(target_subpath)
+                    result["pushed"] = push_result
+                except Exception:
+                    log.exception(
+                        "seed_file_if_missing: push to volume failed for %s", target_subpath
+                    )
+                    result["pushed"] = {"ok": False, "reason": "push_failed"}
+
+        return result
+
     # ------------------------------------------------------------------
     # Sync — volume → local
     # ------------------------------------------------------------------
