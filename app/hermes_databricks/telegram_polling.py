@@ -12,8 +12,9 @@ Capabilities:
   * Allowlist enforcement: messages from non-allowed Telegram usernames
     are rejected with a friendly reply.
   * Hermes-side dispatcher invokes the runtime in ``asyncio.to_thread``.
-  * Outbound ``sendMessage`` falls back from Markdown to plain text if
-    Telegram complains about formatting.
+  * Outbound ``sendMessage`` renders LLM markdown into Telegram's HTML
+    subset (see ``telegram_format.md_to_telegram_html``) and falls back
+    to markdown-stripped plain text if Telegram rejects the HTML.
   * Exponential backoff on transport errors; the loop never dies unless
     cancelled.
 """
@@ -30,6 +31,7 @@ from typing import Any
 import httpx
 
 from hermes_databricks import config as cfg_mod
+from hermes_databricks.telegram_format import md_to_telegram_html, strip_markdown
 
 log = logging.getLogger("hermes_databricks.telegram_polling")
 
@@ -134,25 +136,48 @@ class TelegramClient:
                 await _do(c)
 
     async def send_message(
-        self, chat_id: int, text: str, *, parse_mode: str | None = "Markdown"
+        self, chat_id: int, text: str, *, parse_mode: str | None = "HTML"
     ) -> bool:
-        """Send a text message, falling back to plain on Markdown errors."""
+        """Send a text message, falling back to plain text on parse errors.
+
+        When ``parse_mode`` is ``"HTML"`` (the default), the input is
+        treated as LLM-style markdown and rendered into Telegram's HTML
+        subset. Pass ``parse_mode=None`` to send literal plain text
+        (used for system-generated messages like allowlist denials).
+        """
         if not text:
             return False
-        # Telegram caps messages at 4096 characters.
+        # Telegram caps messages at 4096 characters. We chunk the
+        # *rendered* output so HTML tags don't get sliced; tags are
+        # small so a conservative 4000-char ceiling is safe enough.
+        if parse_mode == "HTML":
+            rendered = md_to_telegram_html(text)
+            fallback = strip_markdown(text)
+        else:
+            rendered = text
+            fallback = text
+
         max_chunk = 4000
-        chunks = [text[i : i + max_chunk] for i in range(0, len(text), max_chunk)] or [""]
+        rendered_chunks = [
+            rendered[i : i + max_chunk] for i in range(0, len(rendered), max_chunk)
+        ] or [""]
+        fallback_chunks = [
+            fallback[i : i + max_chunk] for i in range(0, len(fallback), max_chunk)
+        ] or [""]
 
         ok_all = True
         async with httpx.AsyncClient(timeout=30) as client:
-            for chunk in chunks:
-                payload = {"chat_id": chat_id, "text": chunk}
+            for idx, chunk in enumerate(rendered_chunks):
+                payload: dict[str, Any] = {"chat_id": chat_id, "text": chunk}
                 if parse_mode:
                     payload["parse_mode"] = parse_mode
                 ok = await self._post_send(client, payload)
                 if not ok and parse_mode:
-                    # Retry without Markdown.
-                    payload.pop("parse_mode", None)
+                    # Telegram rejected our formatted payload — retry the
+                    # same chunk's plain-text equivalent with markdown
+                    # markers stripped so the user doesn't see raw ``**``.
+                    plain = fallback_chunks[idx] if idx < len(fallback_chunks) else chunk
+                    payload = {"chat_id": chat_id, "text": plain}
                     ok = await self._post_send(client, payload)
                 ok_all = ok_all and ok
         if ok_all:

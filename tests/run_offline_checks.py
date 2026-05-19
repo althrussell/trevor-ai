@@ -225,6 +225,46 @@ def main() -> int:
         assert_(snap["backends"]["browser"]["available"] is False, "browser backend unavailable")
 
     # ------------------------------------------------------------------
+    # Telegram markdown → HTML rendering (stdlib only)
+    # ------------------------------------------------------------------
+    with section("telegram_format"):
+        from hermes_databricks.telegram_format import (
+            md_to_telegram_html,
+            strip_markdown,
+        )
+
+        assert_(
+            md_to_telegram_html("**bold**") == "<b>bold</b>",
+            "double-asterisk renders as <b>",
+        )
+        assert_(
+            md_to_telegram_html("snake_case_var") == "snake_case_var",
+            "snake_case kept literal (not italicised)",
+        )
+        assert_(
+            md_to_telegram_html("# Title") == "<b>Title</b>",
+            "ATX heading renders as bold line",
+        )
+        assert_(
+            md_to_telegram_html("- one\n- two") == "• one\n• two",
+            "unordered bullets render as •",
+        )
+        assert_(
+            md_to_telegram_html("see [docs](https://x.test)")
+            == 'see <a href="https://x.test">docs</a>',
+            "markdown link renders as anchor",
+        )
+        fenced = md_to_telegram_html("```\n<x>**b**\n```")
+        assert_(
+            fenced == "<pre>&lt;x&gt;**b**\n</pre>",
+            "fenced code is HTML-escaped and not re-processed as markdown",
+        )
+        assert_(
+            strip_markdown("**a** *b* _c_") == "a b c",
+            "strip_markdown removes emphasis markers",
+        )
+
+    # ------------------------------------------------------------------
     # Telegram allowlist (needs httpx — skipped if not installed locally)
     # ------------------------------------------------------------------
     with section("telegram_polling"):
