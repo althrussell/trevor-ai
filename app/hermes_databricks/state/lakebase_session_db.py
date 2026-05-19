@@ -930,14 +930,21 @@ class LakebaseSessionDB:
             )
         return event_id
 
-    def recent_events(self, limit: int = 50) -> List[Dict[str, Any]]:
+    def recent_events(self, limit: int = 50, kind: Optional[str] = None) -> List[Dict[str, Any]]:
         with self.lakebase.cursor() as cur:
             self._ensure_search_path(cur)
-            cur.execute(
-                "SELECT id, ts, kind, channel, session_id, thread_id, payload "
-                "FROM agent_events ORDER BY ts DESC LIMIT %s",
-                (limit,),
-            )
+            if kind:
+                cur.execute(
+                    "SELECT id, ts, kind, channel, session_id, thread_id, payload "
+                    "FROM agent_events WHERE kind = %s ORDER BY ts DESC LIMIT %s",
+                    (kind, limit),
+                )
+            else:
+                cur.execute(
+                    "SELECT id, ts, kind, channel, session_id, thread_id, payload "
+                    "FROM agent_events ORDER BY ts DESC LIMIT %s",
+                    (limit,),
+                )
             rows = cur.fetchall()
         out: List[Dict[str, Any]] = []
         for r in rows:

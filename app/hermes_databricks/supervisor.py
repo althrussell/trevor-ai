@@ -64,11 +64,27 @@ class HermesSupervisor:
             },
         )
 
+        await self._record_event(
+            "app_startup",
+            {
+                "agent": self.cfg.agent_name,
+                "model": self.cfg.llm_endpoint,
+                "telegram_enabled": bool(self.telegram),
+                "cron_available": bool(getattr(self.runtime, "cron_available", False)) if self.runtime else False,
+                "tasks": [t.get_name() for t in self._tasks],
+            },
+        )
+
     async def stop(self) -> None:
         if self._stopped:
             return
         self._stopped = True
         log.info("Supervisor stopping")
+
+        await self._record_event(
+            "app_shutdown",
+            {"agent": self.cfg.agent_name, "tasks": [t.get_name() for t in self._tasks]},
+        )
 
         for task in self._tasks:
             task.cancel()
@@ -165,6 +181,15 @@ class HermesSupervisor:
 
         async def _on_message(chat_id: int, username: Optional[str], text: str) -> Optional[str]:
             session_id = f"telegram:{chat_id}"
+            await self._record_event(
+                "telegram_update",
+                {
+                    "chat_id": chat_id,
+                    "username": username,
+                    "session_id": session_id,
+                    "preview": (text or "")[:256],
+                },
+            )
             try:
                 result = await asyncio.to_thread(
                     self.runtime.run_turn,
@@ -174,7 +199,24 @@ class HermesSupervisor:
                 )
             except Exception as exc:  # noqa: BLE001
                 log.exception("run_turn failed for telegram message")
+                await self._record_event(
+                    "telegram_run_error",
+                    {
+                        "chat_id": chat_id,
+                        "session_id": session_id,
+                        "error": f"{type(exc).__name__}: {exc}",
+                    },
+                )
                 return f"Agent error: {type(exc).__name__}: {exc}"
+            await self._record_event(
+                "telegram_reply",
+                {
+                    "chat_id": chat_id,
+                    "session_id": session_id,
+                    "mode": (result or {}).get("mode") if isinstance(result, dict) else None,
+                    "usage": (result or {}).get("usage") if isinstance(result, dict) else None,
+                },
+            )
             return result.get("text") if isinstance(result, dict) else str(result)
 
         task = asyncio.create_task(client.poll_loop(_on_message), name="telegram_poll")
@@ -215,6 +257,22 @@ class HermesSupervisor:
                     await asyncio.sleep(60)
 
             self._tasks.append(asyncio.create_task(_cron_tick(), name="cron_tick"))
+
+    # ------------------------------------------------------------------
+    # Event persistence (best-effort)
+    # ------------------------------------------------------------------
+
+    async def _record_event(self, kind: str, payload: dict) -> None:
+        if self.runtime is None or getattr(self.runtime, "session_db", None) is None:
+            return
+        try:
+            await asyncio.to_thread(
+                self.runtime.session_db.append_event,  # type: ignore[attr-defined]
+                kind,
+                payload,
+            )
+        except Exception:
+            log.exception("event persist failed: %s", kind)
 
     # ------------------------------------------------------------------
     # Health probes

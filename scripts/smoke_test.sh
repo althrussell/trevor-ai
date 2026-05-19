@@ -6,11 +6,24 @@
 # Usage:
 #   APP_URL=https://...databricksapps.com scripts/smoke_test.sh
 #   PROFILE=hermes-free scripts/smoke_test.sh   # resolves URL via 'apps get'
+#
+# Environment toggles:
+#   SKIP_MODEL_TURN=1   skip the /debug/model-turn call
+#   SKIP_SESSIONS=1     skip the /debug/sessions call
+#   SKIP_CRON=1         skip the cron tick check
+#   SKIP_TOOL_PROBE=1   skip the databricks tool /debug/tools verification
+#   DATABRICKS_TOKEN=…  used as Authorization: Bearer if set
+#
+# Exit codes:
+#   0  all checked endpoints returned 2xx
+#   1  app or core endpoint failed
+#   2  optional check (sessions, cron) failed
 
 set -euo pipefail
 
 PROFILE="${PROFILE:-hermes-free}"
 APP_NAME="${APP_NAME:-hermes-agent}"
+EXIT_CODE=0
 
 if [[ -z "${APP_URL:-}" ]]; then
   echo "==> resolving app URL via 'databricks --profile $PROFILE apps get $APP_NAME'"
@@ -19,9 +32,6 @@ fi
 
 echo "Using APP_URL=$APP_URL"
 
-# We don't currently auto-acquire an OAuth token for the App's
-# OAuth-gated endpoints. If you have one, export it as DATABRICKS_TOKEN
-# and we'll add the Authorization header.
 auth_header=()
 if [[ -n "${DATABRICKS_TOKEN:-}" ]]; then
   auth_header=(-H "Authorization: Bearer $DATABRICKS_TOKEN")
@@ -41,23 +51,58 @@ req() {
   fi
 }
 
+req_softfail() {
+  if ! req "$@"; then
+    echo "  (optional check failed — continuing)"
+    EXIT_CODE=2
+  fi
+}
+
+echo "== Phase 1: core endpoints =="
 req GET /health
 req GET /
 req GET /config
 req GET /ready
 req GET /debug/runtime
-req GET /debug/tools
-req GET /debug/fs
+req GET /debug/supervisor
+req GET /debug/health-checks
 
-# Optional: model turn (requires Hermes runtime up and a working endpoint binding)
+echo ""
+echo "== Phase 5: UC Volume mirror =="
+req GET /debug/fs
+req GET '/debug/fs/list?path='
+
+echo ""
+echo "== Phase 7: tool registry & backends =="
+if [[ "${SKIP_TOOL_PROBE:-0}" != "1" ]]; then
+  req GET /debug/tools
+fi
+
+echo ""
+echo "== Phase 3: model turn =="
 if [[ "${SKIP_MODEL_TURN:-0}" != "1" ]]; then
   req POST /debug/model-turn '{"message": "ping from smoke test"}'
 fi
 
-# Optional: list sessions (requires Lakebase)
+echo ""
+echo "== Phase 4 + 9: lakebase sessions & events =="
 if [[ "${SKIP_SESSIONS:-0}" != "1" ]]; then
-  req GET /debug/sessions || true
+  req_softfail GET /debug/sessions
+  req_softfail GET '/debug/events?limit=10'
+  req_softfail GET '/debug/events?kind=app_startup&limit=5'
+  req_softfail GET /debug/usage
 fi
 
 echo ""
-echo "Smoke test complete."
+echo "== Phase 8: cron =="
+if [[ "${SKIP_CRON:-0}" != "1" ]]; then
+  req_softfail GET /debug/cron
+fi
+
+echo ""
+echo "== Phase 6: telegram poller status =="
+req_softfail GET /debug/telegram
+
+echo ""
+echo "Smoke test complete (exit_code=$EXIT_CODE)."
+exit "$EXIT_CODE"

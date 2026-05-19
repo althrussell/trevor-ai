@@ -239,12 +239,16 @@ async def debug_tools(request: Request) -> Dict[str, Any]:
 
 
 @app.get("/debug/events")
-async def debug_events(request: Request, limit: int = Query(50, ge=1, le=500)) -> Dict[str, Any]:
+async def debug_events(
+    request: Request,
+    limit: int = Query(50, ge=1, le=500),
+    kind: Optional[str] = Query(None, description="Filter by event kind (e.g. cron_tick, telegram_update)."),
+) -> Dict[str, Any]:
     runtime = _runtime_or_none(request)
     if runtime is None or runtime.session_db is None:
         raise HTTPException(status_code=503, detail="Session DB not initialized")
-    events = await asyncio.to_thread(runtime.session_db.recent_events, limit)
-    return {"count": len(events), "events": events}
+    events = await asyncio.to_thread(runtime.session_db.recent_events, limit, kind)
+    return {"count": len(events), "events": events, "kind_filter": kind}
 
 
 @app.get("/debug/usage")
@@ -301,3 +305,44 @@ async def debug_telegram(request: Request) -> Dict[str, Any]:
     if supervisor is None or supervisor.telegram is None:
         return {"status": "disabled", "reason": "Telegram client not configured"}
     return supervisor.telegram.status()
+
+
+@app.get("/debug/supervisor")
+async def debug_supervisor(request: Request) -> Dict[str, Any]:
+    supervisor = _supervisor_or_none(request)
+    if supervisor is None:
+        return {"status": "not_initialized"}
+    tasks = []
+    for t in getattr(supervisor, "_tasks", []):
+        tasks.append({
+            "name": t.get_name(),
+            "done": t.done(),
+            "cancelled": t.cancelled(),
+            "exception": (
+                type(t.exception()).__name__
+                if t.done() and not t.cancelled() and t.exception() is not None
+                else None
+            ),
+        })
+    return {
+        "stopped": getattr(supervisor, "_stopped", False),
+        "runtime_loaded": getattr(supervisor, "runtime", None) is not None,
+        "telegram_loaded": getattr(supervisor, "telegram", None) is not None,
+        "tasks": tasks,
+    }
+
+
+@app.get("/debug/health-checks")
+async def debug_health_checks(request: Request) -> Dict[str, Any]:
+    health = request.app.state.health
+    out = []
+    for name, check in health._checks.items():  # type: ignore[attr-defined]
+        out.append({
+            "name": name,
+            "description": check.description,
+            "last_status": check.last_status,
+            "last_detail": check.last_detail,
+            "last_ms": round(check.last_ms, 2),
+            "last_checked_at": check.last_checked_at,
+        })
+    return {"count": len(out), "checks": out}
