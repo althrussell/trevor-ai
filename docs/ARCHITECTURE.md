@@ -112,7 +112,7 @@ Returns a refresh-aware OpenAI-compatible client built from
 `WorkspaceClient().serving_endpoints.get_open_ai_client()`. Auth headers
 are minted per-request by the SDK's `httpx` Bearer auth, so token
 rotation is automatic. The provider's `model` attribute is set to the
-serving endpoint name (default `databricks-qwen3-next-80b-a3b-instruct`).
+serving endpoint name (default `databricks-gpt-oss-120b`).
 A `ProviderProfile` is also registered with Hermes' provider registry
 so `hermes model` and CLI introspection report `databricks` as a first-
 class provider.

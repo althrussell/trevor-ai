@@ -13,7 +13,7 @@ from your phone via Telegram, in about ten minutes.
 
 * A Databricks App (`hermes-agent`) running 24/7 on Free Edition.
 * A real `hermes-agent==0.14.0` `AIAgent` inside it, backed by:
-  * a Databricks-hosted open-source model (default `databricks-qwen3-next-80b-a3b-instruct`),
+  * a Databricks-hosted open-weights model (default `databricks-gpt-oss-120b`),
   * a Lakebase Postgres instance for session + message + tool-call history,
   * a Unity Catalog Volume mirroring `HERMES_HOME`.
 * A Telegram bot you can DM to talk to the agent.
@@ -93,7 +93,7 @@ Skim:
 
 The defaults are tuned for Free Edition. The only thing you *might*
 want to change up front is the `llm_endpoint` if your workspace
-doesn't expose `databricks-qwen3-next-80b-a3b-instruct` — list what's
+doesn't expose `databricks-gpt-oss-120b` — list what's
 available with:
 
 ```bash

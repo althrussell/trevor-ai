@@ -15,7 +15,7 @@ env:
 
   # Model serving
   - name: HERMES_DATABRICKS_LLM_ENDPOINT
-    value: "databricks-qwen3-next-80b-a3b-instruct"
+    value: "databricks-gpt-oss-120b"
 
   # Unity Catalog
   - name: HERMES_DATABRICKS_CATALOG

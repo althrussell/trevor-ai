@@ -113,15 +113,18 @@ gate the feature behind an explicit backend selector.
 
 ## 8. Databricks Model Serving
 
-* Default endpoint: `databricks-qwen3-next-80b-a3b-instruct` (Free
-  Edition has a number of OSS endpoints pre-provisioned).
+* Default endpoint: `databricks-gpt-oss-120b` (Free Edition has a
+  number of open-weights endpoints pre-provisioned; `databricks-gpt-oss-120b`
+  and `databricks-qwen3-next-80b-a3b-instruct` are both viable
+  swap-ins via `HERMES_DATABRICKS_LLM_ENDPOINT`).
 * Endpoints are OpenAI-compatible; the URL is
   `https://<workspace>/serving-endpoints/<endpoint>/invocations` for
   REST, and the OpenAI client returned by
   `get_open_ai_client()` already targets `…/serving-endpoints` with
   `model=<endpoint>` passed per-request.
-* Tool/`tool_choice` support varies by endpoint. The Qwen3 endpoint
-  supports OpenAI-style `tools` parameter. We pass Hermes' tool
+* Tool/`tool_choice` support varies by endpoint. Both
+  `databricks-gpt-oss-120b` and the Qwen3 endpoints support the
+  OpenAI-style `tools` parameter. We pass Hermes' tool
   schemas through unchanged; we set `tool_choice="auto"`.
 * Token usage is returned in the standard OpenAI shape; we route it
   to `LakebaseSessionDB.update_token_counts` and `usage_ledger`.

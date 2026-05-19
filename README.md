@@ -18,7 +18,7 @@ This is *not* a stripped-down "Hermes-on-Databricks demo". The Hermes
 runtime is imported unmodified from PyPI (`hermes-agent==0.14.0`) and
 wired to Databricks-native compatibility layers underneath:
 
-* **LLM** — [Databricks Foundation Model serving](https://docs.databricks.com/aws/en/machine-learning/foundation-model-apis) (default `databricks-qwen3-next-80b-a3b-instruct`) via the OpenAI-compatible client.
+* **LLM** — [Databricks Foundation Model serving](https://docs.databricks.com/aws/en/machine-learning/foundation-model-apis) (default `databricks-gpt-oss-120b`) via the OpenAI-compatible client.
 * **State** — [Lakebase Postgres](https://docs.databricks.com/aws/en/oltp/) replaces Hermes' local SQLite `SessionDB`.
 * **Filesystem** — [Unity Catalog Volumes](https://docs.databricks.com/aws/en/volumes/) replace `~/.hermes` with a durable mirror.
 * **Secrets** — [Databricks Secrets](https://docs.databricks.com/aws/en/security/secrets/) hold Telegram tokens and optional provider keys.
@@ -317,7 +317,7 @@ Override at deploy time with `--var key=value`:
 | `schema` | `hermes_agent` | UC schema |
 | `app_name` | `hermes-agent` | App slug |
 | `agent_name` | `Hermes` | Display name |
-| `llm_endpoint` | `databricks-qwen3-next-80b-a3b-instruct` | Foundation Model endpoint |
+| `llm_endpoint` | `databricks-gpt-oss-120b` | Foundation Model endpoint |
 | `secrets_scope` | `hermes_agent` | Secrets scope |
 | `lakebase_instance` | `hermes-db` | Lakebase Postgres instance |
 | `hermes_home_volume` | `hermes_home` | UC volume for `HERMES_HOME` |

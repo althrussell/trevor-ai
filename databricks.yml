@@ -36,7 +36,7 @@ variables:
 
   llm_endpoint:
     description: Databricks Model Serving endpoint name to use as the default model.
-    default: databricks-qwen3-next-80b-a3b-instruct
+    default: databricks-gpt-oss-120b
 
   secrets_scope:
     description: Databricks Secrets scope holding Telegram token + optional provider keys.

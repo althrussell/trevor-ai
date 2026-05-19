@@ -64,7 +64,7 @@ class Config:
     lakebase_schema: str = "hermes_session"
 
     # Model serving
-    llm_endpoint: str = "databricks-qwen3-next-80b-a3b-instruct"
+    llm_endpoint: str = "databricks-gpt-oss-120b"
 
     # Runtime knobs
     daily_token_cap: int = 100_000
@@ -115,7 +115,7 @@ def load() -> Config:
         lakebase_schema=_str_env("HERMES_DATABRICKS_LAKEBASE_SCHEMA", "hermes_session"),
         llm_endpoint=_str_env(
             "HERMES_DATABRICKS_LLM_ENDPOINT",
-            "databricks-qwen3-next-80b-a3b-instruct",
+            "databricks-gpt-oss-120b",
         ),
         daily_token_cap=_int_env("HERMES_DATABRICKS_DAILY_TOKEN_CAP", 100_000),
         heartbeat_seconds=_int_env("HERMES_DATABRICKS_HEARTBEAT_SECONDS", 180),
