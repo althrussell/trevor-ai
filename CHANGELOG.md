@@ -9,6 +9,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `NOTICE.md` — full third-party attribution: runtime dependencies
+  with licenses (hermes-agent MIT, databricks-sdk Apache-2.0, FastAPI
+  MIT, Uvicorn BSD-3-Clause, psycopg LGPL-3.0 with an explicit
+  dynamic-linking note), dev-time dependencies, and architectural-
+  reference disclosures for Hermes Agent, Living-AI, Databricks AI
+  Dev Kit, and the Anthropic Claude tooling used during development.
+- License-compliance review of [databricks-solutions/ai-dev-kit](https://github.com/databricks-solutions/ai-dev-kit)
+  (custom restrictive "Databricks License"): confirmed zero
+  references / dependencies / vendored code from ai-dev-kit; no
+  compliance obligations triggered.
+- License-compliance review of [vbalasu/living-ai](https://github.com/vbalasu/living-ai)
+  (no LICENSE file declared — default copyright = all rights
+  reserved): performed line-level overlap analysis across 8 file
+  pairs. All shared "substantive" lines are Databricks SDK /
+  Telegram Bot API / psycopg call signatures (merger doctrine) or
+  mandatory Databricks notebook idioms (scènes à faire); no
+  copyrightable expression was copied. Findings documented in
+  `NOTICE.md §3`.
+- README §16 expanded to include a licensing summary and explicit
+  architectural-reference disclosures pointing at `NOTICE.md`.
+- LICENSE now references `NOTICE.md` and requires NOTICE.md to be
+  redistributed alongside it.
+- `CONTRIBUTING.md` gains a "Licensing & attribution" section
+  documenting which upstream license categories are OK to pull in
+  (MIT/Apache/BSD/ISC: yes; LGPL: runtime only; GPL: no; custom
+  restrictive licenses like ai-dev-kit's DB License: no; no-license
+  repos: patterns only, never code) plus an SPDX header convention
+  for new files.
+
 - Comprehensive `README.md` rewrite with badges, story-driven intro,
   "Why Databricks Free Edition", "Why Hermes Agent", architecture
   diagram, repo layout, configuration reference, endpoint reference,

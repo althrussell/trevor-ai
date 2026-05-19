@@ -168,6 +168,53 @@ Releases are tagged from `main` and follow [semver](https://semver.org/):
 
 ---
 
+## Licensing & attribution
+
+This project is MIT-licensed. By contributing you agree your
+contribution will be licensed under the same MIT terms (the standard
+inbound = outbound model — no separate CLA).
+
+### What you can pull in
+
+| Source | OK to vendor? | OK to take patterns from? |
+|---|---|---|
+| MIT / Apache-2.0 / BSD-2/3-Clause / ISC libraries | yes (with header + NOTICE update) | yes |
+| LGPL libraries (e.g. `psycopg`) | yes as a *runtime dependency* (dynamic linking); **no** as vendored source unless you ship LGPL terms | yes |
+| GPL-licensed code | **no** — incompatible with MIT | yes (ideas only) |
+| Code under a custom restrictive license (e.g. the Databricks "DB License" used by [ai-dev-kit](https://github.com/databricks-solutions/ai-dev-kit)) | **no** | only if the patterns are non-copyrightable (APIs, file layouts, governance shapes) |
+| Code with no LICENSE file (e.g. Living-AI at the time of writing) | **no** — default copyright = all rights reserved | yes (patterns / architecture only — never expressive code) |
+
+If you add a new runtime dependency, update
+[`NOTICE.md`](NOTICE.md) in the same PR.
+
+### SPDX header convention (new files only — don't churn existing ones)
+
+New Python files should start with a single SPDX identifier comment so
+license-scanning tools can pick up the licensing without parsing
+LICENSE:
+
+```python
+# SPDX-License-Identifier: MIT
+# Copyright (c) 2026 Al Thrussell
+"""Module docstring goes here."""
+```
+
+For YAML / shell / Markdown:
+
+```yaml
+# SPDX-License-Identifier: MIT
+```
+
+Files that vendor code from a permissively-licensed upstream must
+include both license identifiers and a `Source:` line, e.g.:
+
+```python
+# SPDX-License-Identifier: MIT AND Apache-2.0
+# Source: https://github.com/example/upstream commit <sha>
+```
+
+When in doubt, ask in your PR description and we'll figure it out.
+
 ## Architectural ground rules
 
 These are non-negotiable; PRs that violate them will be asked to

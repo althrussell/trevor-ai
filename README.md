@@ -508,15 +508,40 @@ Key invariants worth knowing:
 
 ## 16. License & credits
 
-[MIT](LICENSE) © 2026 Al Thrussell.
+[MIT](LICENSE) © 2026 Al Thrussell. See [NOTICE.md](NOTICE.md) for the
+full third-party attribution list and architectural-reference
+disclosures.
 
-* **Hermes Agent runtime** — <https://github.com/nousresearch/hermes-agent>
-  (Nous Research). This project does not vendor or modify Hermes;
-  it pins `hermes-agent==0.14.0` from PyPI and bolts Databricks
-  adapters around it.
-* **Living-AI** — <https://github.com/vbalasu/living-ai>. Used as a
-  reference for the Databricks-App-on-Free-Edition substrate
-  patterns (App + Lakebase + UC Volume + Telegram polling). No
-  Living-AI code is vendored here.
+### Runtime dependencies (summary)
+
+* **Hermes Agent** — MIT (Nous Research),
+  <https://github.com/NousResearch/hermes-agent>. Installed unmodified
+  from PyPI (`hermes-agent==0.14.0`); no Hermes core code is vendored
+  or modified here.
+* **Databricks SDK** — Apache-2.0.
+* **FastAPI** — MIT. **Uvicorn** — BSD-3-Clause.
+* **psycopg v3** — LGPL-3.0 (dynamic-linked via pip; not modified).
+  See [NOTICE.md §1](NOTICE.md#note-on-psycopgbinary-and-lgpl-30) for
+  details.
+
+### Architectural references
+
+* **Living-AI** — <https://github.com/vbalasu/living-ai>. Consulted as
+  an *architectural pattern reference* for the agent-on-Databricks-
+  Free-Edition substrate shape. **No source code is vendored,
+  copied, or adapted** — a line-level overlap analysis confirmed
+  that all shared "substantive" lines are Databricks SDK / Telegram
+  Bot API / psycopg call signatures (non-copyrightable under merger
+  doctrine) or mandatory Databricks notebook idioms (scènes à
+  faire). See [NOTICE.md §3](NOTICE.md#living-ai) for the full
+  disclosure.
+* **Databricks AI Dev Kit** — <https://github.com/databricks-solutions/ai-dev-kit>.
+  Reviewed but **not used**. Distributed under a restrictive custom
+  "Databricks License" that limits use to Databricks Services
+  contexts; we deliberately avoid any code or content dependency on
+  it. The repo's *governance file layout* (LICENSE / NOTICE /
+  SECURITY / CONTRIBUTING / CODEOWNERS / dependency attribution
+  table) was reviewed as a non-copyrightable governance pattern;
+  our equivalents are independently authored.
 
 If this is useful to you, ⭐ the repo and tell me what broke.

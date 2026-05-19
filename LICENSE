@@ -22,8 +22,8 @@ SOFTWARE.
 
 ---
 
-This project integrates with, but does not vendor or modify, the following
-upstream open-source projects. Their licenses govern their respective code:
-
-* hermes-agent — https://github.com/nousresearch/hermes-agent
-* living-ai (reference patterns) — https://github.com/vbalasu/living-ai
+This project depends on and references several third-party open-source
+projects. Full attributions, license summaries, and the architectural-
+reference disclosures (Hermes Agent, Living-AI, Databricks AI Dev Kit)
+are documented in [NOTICE.md](NOTICE.md). NOTICE.md must be redistributed
+alongside this LICENSE.
