@@ -29,6 +29,44 @@ wired to Databricks-native compatibility layers underneath:
 
 ---
 
+## Who is Trevor?
+
+<p align="center">
+  <img src="docs/images/trevor-hero.png" alt="Trevor — the Hermes-powered AI agent running on Databricks" width="820">
+</p>
+
+**Trevor is the face of this project — the agent you actually talk to.**
+
+Under the hood, Trevor is a thin persona wrapped around the real
+[NousResearch Hermes](https://github.com/nousresearch/hermes-agent) runtime.
+He carries the **Hermes brain** — the messenger-god's winged helmet and
+caduceus made literal — because everything that makes him useful comes
+from Hermes itself: the tool-calling agent loop, the memory model, the
+skills registry, the cron scheduler, the provider abstraction.
+
+What this repo gives Trevor is a *body* he can live in on Databricks
+Free Edition:
+
+* **Heart** — a Databricks-hosted Foundation Model
+  (`databricks-gpt-oss-120b` by default) drives every turn.
+* **Memory** — Lakebase Postgres replaces Hermes' local SQLite
+  `SessionDB`, so Trevor remembers conversations across container
+  restarts.
+* **Home** — a Unity Catalog Volume mirrors `~/.hermes`, so skills,
+  configs, and cron jobs survive redeploys.
+* **Voice** — Telegram (outbound long-poll) lets you reach Trevor from
+  your phone; a FastAPI surface handles diagnostics in the workspace.
+* **Senses** — a Databricks-native tool backend lets him query Unity
+  Catalog, inspect serving endpoints, read volumes, and run
+  allowlisted jobs.
+
+The name is deliberate. Calling the agent "Hermes" all the way through
+would conflate the runtime (a library) with the deployed agent (a
+character with state, memory, and a Telegram handle). Trevor *is* the
+deployed agent; Hermes is the engine in his head.
+
+---
+
 ## Table of contents
 
 1. [Why this project](#1-why-this-project)
