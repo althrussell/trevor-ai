@@ -20,7 +20,7 @@ databricks-sdk==0.105.0
 mlflow-skinny==3.5.0
 
 # Postgres / Lakebase (psycopg pure-python binary)
-psycopg[binary]==3.2.3
+psycopg[binary]==3.3.4
 
 # Hermes itself. Pins its own openai, pydantic, httpx, pyyaml,
 # requests, jinja2, croniter, etc. — don't override them here.
