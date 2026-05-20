@@ -7,7 +7,7 @@ isolated adapters that let it run inside a Databricks Apps container.
 ## Guiding principles
 
 1. **Never fork Hermes core.** All Databricks-specific code lives in
-   the `hermes_databricks` package or in plugin directories that
+   the `trevor_databricks` package or in plugin directories that
    Hermes already supports.
 2. **Use Hermes' own extension points first.**
    * `ProviderProfile` for the model provider.
@@ -32,7 +32,7 @@ isolated adapters that let it run inside a Databricks Apps container.
 * Hermes' context compressor (`agent/context_compressor.py`,
   `trajectory_compressor.py`).
 * Hermes' skills loader (`agent/skill_utils.py`,
-  `hermes_cli/config.ensure_hermes_home`).
+  `hermes_cli/config.ensure_trevor_home`).
 * Hermes' cron scheduler (`cron/scheduler.py`, `cron/jobs.py`).
 * Hermes' logging (`hermes_logging.py`) — we only extend the formatter
   with our redactor.
@@ -42,7 +42,7 @@ isolated adapters that let it run inside a Databricks Apps container.
 | Hermes assumption | Databricks replacement | Adapter |
 |-------------------|------------------------|---------|
 | SQLite `state.db` at `HERMES_HOME/state.db` | Postgres on Lakebase | `state.lakebase_session_db.LakebaseSessionDB` |
-| `~/.hermes` or POSIX `HERMES_HOME` writes durable across restarts | `/tmp/hermes_cache` (ephemeral) + sync to UC Volume | `fs.volume_fs.UCVolumeHome` + `fs.cache_sync.CacheSync` |
+| `~/.hermes` or POSIX `HERMES_HOME` writes durable across restarts | `/tmp/trevor_cache` (ephemeral) + sync to UC Volume | `fs.volume_fs.UCVolumeHome` + `fs.cache_sync.CacheSync` |
 | `.env` file with provider API keys | Databricks Secrets | `config.load_secrets` |
 | External paid model providers | Databricks Model Serving via OpenAI-compatible client | `databricks_provider.DatabricksOpenAIClientFactory` + `apply_provider_to_agent` |
 | Telegram webhook (or local long-poll) | App-side outbound long polling | `telegram_polling.TelegramClient` |
@@ -56,7 +56,7 @@ isolated adapters that let it run inside a Databricks Apps container.
 |-------|-------------|--------|
 | 0 | Source inspection + docs (this file, ARCHITECTURE, RUNTIME_CONSTRAINTS, TOOL_BACKEND_MATRIX) | This change |
 | 1 | Bundle + `app/app.py` + `/health` | This change |
-| 2 | `pip install hermes-agent==0.14.0` + `hermes_databricks.runtime.HermesRuntime` | This change |
+| 2 | `pip install hermes-agent==0.14.0` + `trevor_databricks.runtime.TrevorRuntime` | This change |
 | 3 | `databricks_provider` + `/debug/model-turn` | This change |
 | 4 | `LakebaseSessionDB` + `schema.sql` + `sql/setup_lakebase.py` | This change |
 | 5 | `UCVolumeHome` + `CacheSync` | This change |
@@ -127,7 +127,7 @@ because it requires zero monkey-patching of Hermes' core logic:
    that read them get the right values.
 
 The swap happens in exactly one place
-(`hermes_databricks.databricks_provider.apply_to_agent`) and is
+(`trevor_databricks.databricks_provider.apply_to_agent`) and is
 covered by a unit test that asserts the resulting client is the
 WorkspaceClient one and that `chat.completions.create` is dispatched
 to it.
@@ -142,10 +142,10 @@ Databricks Apps:
 
 Strategy:
 
-1. Set `HERMES_HOME=/tmp/hermes_cache/hermes_home`.
+1. Set `HERMES_HOME=/tmp/trevor_cache/trevor_home`.
 2. On boot, list the UC Volume root and download all files into the
    cache (`UCVolumeHome.sync_from_volume`).
-3. Run `hermes_cli.config.ensure_hermes_home(...)` so any missing
+3. Run `hermes_cli.config.ensure_trevor_home(...)` so any missing
    subdirs (cron/, sessions/, logs/, …) are created.
 4. Monkeypatch nothing — Hermes happily writes to whatever
    `HERMES_HOME` points at.

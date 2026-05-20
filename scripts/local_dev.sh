@@ -2,7 +2,7 @@
 # Local development helper — runs the FastAPI app against your laptop.
 #
 # Most Databricks-specific subsystems (Lakebase, UC Volumes, Telegram)
-# will report "unavailable" unless you point HERMES_DATABRICKS_* at a
+# will report "unavailable" unless you point TREVOR_DATABRICKS_* at a
 # real workspace + secrets. The basic /health, /, /config endpoints
 # work without any Databricks credentials.
 
@@ -22,8 +22,8 @@ echo "==> installing requirements"
 pip install -q --upgrade pip
 pip install -q -r requirements.txt
 
-export HERMES_DATABRICKS_AGENT_NAME="${HERMES_DATABRICKS_AGENT_NAME:-Hermes-Dev}"
-export HERMES_HOME="${HERMES_HOME:-$ROOT_DIR/.hermes_cache/hermes_home}"
+export TREVOR_DATABRICKS_AGENT_NAME="${TREVOR_DATABRICKS_AGENT_NAME:-Hermes-Dev}"
+export HERMES_HOME="${HERMES_HOME:-$ROOT_DIR/.trevor_cache/trevor_home}"
 mkdir -p "$HERMES_HOME"
 
 echo "==> launching uvicorn on http://127.0.0.1:8000"

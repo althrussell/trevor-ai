@@ -10,53 +10,53 @@ command:
 
 env:
   # Identification
-  - name: HERMES_DATABRICKS_AGENT_NAME
+  - name: TREVOR_DATABRICKS_AGENT_NAME
     value: "Hermes"
 
   # Model serving
-  - name: HERMES_DATABRICKS_LLM_ENDPOINT
+  - name: TREVOR_DATABRICKS_LLM_ENDPOINT
     value: "databricks-qwen35-122b-a10b"
 
   # Unity Catalog
-  - name: HERMES_DATABRICKS_CATALOG
+  - name: TREVOR_DATABRICKS_CATALOG
     value: "workspace"
-  - name: HERMES_DATABRICKS_SCHEMA
-    value: "hermes_agent"
-  - name: HERMES_DATABRICKS_HERMES_HOME_VOLUME
-    value: "hermes_home"
-  - name: HERMES_DATABRICKS_ARTIFACTS_VOLUME
-    value: "hermes_artifacts"
+  - name: TREVOR_DATABRICKS_SCHEMA
+    value: "trevor_agent"
+  - name: TREVOR_DATABRICKS_HERMES_HOME_VOLUME
+    value: "trevor_home"
+  - name: TREVOR_DATABRICKS_ARTIFACTS_VOLUME
+    value: "trevor_artifacts"
 
   # Lakebase
-  - name: HERMES_DATABRICKS_LAKEBASE_INSTANCE
+  - name: TREVOR_DATABRICKS_LAKEBASE_INSTANCE
     value: "trevor-db"
-  - name: HERMES_DATABRICKS_LAKEBASE_SCHEMA
-    value: "hermes_session"
+  - name: TREVOR_DATABRICKS_LAKEBASE_SCHEMA
+    value: "trevor_session"
 
   # Secrets scope
-  - name: HERMES_DATABRICKS_SECRETS_SCOPE
-    value: "hermes_agent"
+  - name: TREVOR_DATABRICKS_SECRETS_SCOPE
+    value: "trevor_agent"
 
   # Behavior
-  - name: HERMES_DATABRICKS_DAILY_TOKEN_CAP
+  - name: TREVOR_DATABRICKS_DAILY_TOKEN_CAP
     value: "100000"
-  - name: HERMES_DATABRICKS_HEARTBEAT_SECONDS
+  - name: TREVOR_DATABRICKS_HEARTBEAT_SECONDS
     value: "180"
 
   # Channels
-  - name: HERMES_DATABRICKS_TELEGRAM_ENABLED
+  - name: TREVOR_DATABRICKS_TELEGRAM_ENABLED
     value: "true"
 
   # Tool backends
-  - name: HERMES_DATABRICKS_TERMINAL_BACKEND
+  - name: TREVOR_DATABRICKS_TERMINAL_BACKEND
     value: "in_app_subprocess"
-  - name: HERMES_DATABRICKS_BROWSER_BACKEND
+  - name: TREVOR_DATABRICKS_BROWSER_BACKEND
     value: "disabled"
-  - name: HERMES_DATABRICKS_MCP_ENABLED
+  - name: TREVOR_DATABRICKS_MCP_ENABLED
     value: "false"
 
   # SQL Warehouse for databricks_uc_query_readonly + databricks_sql_execute
-  - name: HERMES_DATABRICKS_WAREHOUSE_ID
+  - name: TREVOR_DATABRICKS_WAREHOUSE_ID
     value: "9a444167489c1f75"
 
   # Databricks-ops gates (see docs/DATABRICKS_OPS.md)
@@ -72,21 +72,21 @@ env:
   #                      {"error":"yolo_required"}.
   #   true            → everything goes. Each such call is logged as
   #                      agent_events kind="dbx_yolo_call".
-  - name: HERMES_DATABRICKS_WRITES_ENABLED
+  - name: TREVOR_DATABRICKS_WRITES_ENABLED
     value: "false"
-  - name: HERMES_DATABRICKS_YOLO
+  - name: TREVOR_DATABRICKS_YOLO
     value: "false"
   # Override these CSVs to widen or narrow what the mutating primitives accept.
   # When unset, defaults to the bundle's own catalog/schema and bundle-managed
-  # volumes (resolved in hermes_databricks.config.load()).
-  # - name: HERMES_DATABRICKS_WRITE_ALLOWED_SCHEMAS
-  #   value: "workspace.hermes_agent.*"
-  # - name: HERMES_DATABRICKS_WRITE_ALLOWED_VOLUMES
-  #   value: "/Volumes/workspace/hermes_agent/hermes_home,/Volumes/workspace/hermes_agent/hermes_artifacts"
+  # volumes (resolved in trevor_databricks.config.load()).
+  # - name: TREVOR_DATABRICKS_WRITE_ALLOWED_SCHEMAS
+  #   value: "workspace.trevor_agent.*"
+  # - name: TREVOR_DATABRICKS_WRITE_ALLOWED_VOLUMES
+  #   value: "/Volumes/workspace/trevor_agent/trevor_home,/Volumes/workspace/trevor_agent/trevor_artifacts"
 
   # Hermes home (the local cache; durable mirror lives in UC Volume)
   - name: HERMES_HOME
-    value: "/tmp/hermes_cache/hermes_home"
+    value: "/tmp/trevor_cache/trevor_home"
 
   # Quiet Hermes' setup-wizard prompts
   - name: HERMES_NONINTERACTIVE

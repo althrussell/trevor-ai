@@ -1,7 +1,7 @@
 """Unit tests for the Databricks-native toolset registration and guards.
 
 These tests deliberately avoid touching the real Databricks SDK — the
-toolset's only hard dependency is ``hermes_databricks.tools.sql_guard``
+toolset's only hard dependency is ``trevor_databricks.tools.sql_guard``
 plus optional helpers. SDK-backed tools are exercised via dependency
 injection on the module-level ``_WORKSPACE_CLIENT`` singleton.
 """
@@ -13,7 +13,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from hermes_databricks.tools import databricks_toolset as dts
+from trevor_databricks.tools import databricks_toolset as dts
 
 
 @pytest.fixture(autouse=True)
@@ -21,11 +21,11 @@ def _reset_module_state(monkeypatch):
     # Reset shared lazy client and env var state between tests.
     monkeypatch.setattr(dts, "_WORKSPACE_CLIENT", None, raising=False)
     for k in [
-        "HERMES_DATABRICKS_QUERY_ALLOWED_TABLES",
-        "HERMES_DATABRICKS_JOB_ID_ALLOWLIST",
-        "HERMES_DATABRICKS_VOLUME_READ_PREFIXES",
-        "HERMES_DATABRICKS_AGENT_NOTES_SUBPATH",
-        "HERMES_DATABRICKS_WAREHOUSE_ID",
+        "TREVOR_DATABRICKS_QUERY_ALLOWED_TABLES",
+        "TREVOR_DATABRICKS_JOB_ID_ALLOWLIST",
+        "TREVOR_DATABRICKS_VOLUME_READ_PREFIXES",
+        "TREVOR_DATABRICKS_AGENT_NOTES_SUBPATH",
+        "TREVOR_DATABRICKS_WAREHOUSE_ID",
     ]:
         monkeypatch.delenv(k, raising=False)
     yield
@@ -67,7 +67,7 @@ def test_uc_query_requires_warehouse():
     raw = dts._h_uc_query_readonly({"sql": "SELECT 1"})
     payload = json.loads(raw)
     assert "error" in payload
-    assert "HERMES_DATABRICKS_WAREHOUSE_ID" in payload["error"]
+    assert "TREVOR_DATABRICKS_WAREHOUSE_ID" in payload["error"]
 
 
 def test_uc_describe_requires_three_parts():
@@ -77,7 +77,7 @@ def test_uc_describe_requires_three_parts():
 
 
 def test_uc_describe_enforces_allowlist(monkeypatch):
-    monkeypatch.setenv("HERMES_DATABRICKS_QUERY_ALLOWED_TABLES", "main.allowed.*")
+    monkeypatch.setenv("TREVOR_DATABRICKS_QUERY_ALLOWED_TABLES", "main.allowed.*")
     raw = dts._h_uc_describe_table({"full_table_name": "main.banned.x"})
     payload = json.loads(raw)
     assert "error" in payload
@@ -85,7 +85,7 @@ def test_uc_describe_enforces_allowlist(monkeypatch):
 
 
 def test_uc_describe_allowlist_wildcard_allows(monkeypatch):
-    monkeypatch.setenv("HERMES_DATABRICKS_QUERY_ALLOWED_TABLES", "main.allowed.*")
+    monkeypatch.setenv("TREVOR_DATABRICKS_QUERY_ALLOWED_TABLES", "main.allowed.*")
     table = SimpleNamespace(comment="x", table_type="MANAGED", owner="me", columns=[])
     fake_tables = SimpleNamespace(get=lambda _name: table)
     _set_client(monkeypatch, tables=fake_tables)
@@ -107,7 +107,7 @@ def test_volume_write_rejects_absolute_path():
 
 
 def test_volume_read_enforces_prefix(monkeypatch):
-    monkeypatch.setenv("HERMES_DATABRICKS_VOLUME_READ_PREFIXES", "/Volumes/x/y/z")
+    monkeypatch.setenv("TREVOR_DATABRICKS_VOLUME_READ_PREFIXES", "/Volumes/x/y/z")
     raw = dts._h_volume_read({"path": "/Volumes/other/place/file.txt"})
     payload = json.loads(raw)
     assert "error" in payload
@@ -129,7 +129,7 @@ def test_jobs_run_rejects_non_integer():
 
 
 def test_jobs_run_calls_sdk_when_allowed(monkeypatch):
-    monkeypatch.setenv("HERMES_DATABRICKS_JOB_ID_ALLOWLIST", "42, 43")
+    monkeypatch.setenv("TREVOR_DATABRICKS_JOB_ID_ALLOWLIST", "42, 43")
     called = {}
 
     def _run_now(job_id, notebook_params):

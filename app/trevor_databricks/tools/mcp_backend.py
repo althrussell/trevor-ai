@@ -1,6 +1,6 @@
 """MCP backend status helper.
 
-When ``HERMES_DATABRICKS_MCP_ENABLED=true``, Hermes' own MCP
+When ``TREVOR_DATABRICKS_MCP_ENABLED=true``, Hermes' own MCP
 discovery (``tools/mcp_tool.py``) reads ``HERMES_HOME/config.yaml``
 for ``mcp_servers``. We don't intercept that path — we just expose a
 diagnostic for ``/debug/tools`` that explains what the operator needs
@@ -15,7 +15,7 @@ from typing import Any
 
 
 def _config_path() -> Path:
-    home = os.environ.get("HERMES_HOME") or "/tmp/hermes_cache/hermes_home"
+    home = os.environ.get("HERMES_HOME") or "/tmp/trevor_cache/trevor_home"
     return Path(home) / "config.yaml"
 
 
@@ -27,7 +27,7 @@ def describe(enabled: bool) -> dict[str, Any]:
     if not enabled:
         out["status"] = "disabled"
         out["reason"] = (
-            "MCP is disabled. Set HERMES_DATABRICKS_MCP_ENABLED=true and add "
+            "MCP is disabled. Set TREVOR_DATABRICKS_MCP_ENABLED=true and add "
             "an `mcp_servers:` block to HERMES_HOME/config.yaml. Remote-HTTP "
             "MCP servers work in the App container; stdio MCP servers need "
             "the binary present in the image."
@@ -66,7 +66,7 @@ def describe(enabled: bool) -> dict[str, Any]:
 
 
 def list_servers() -> dict[str, Any]:
-    enabled = os.environ.get("HERMES_DATABRICKS_MCP_ENABLED", "false").lower() in {
+    enabled = os.environ.get("TREVOR_DATABRICKS_MCP_ENABLED", "false").lower() in {
         "1",
         "true",
         "yes",

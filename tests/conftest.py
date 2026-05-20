@@ -1,7 +1,7 @@
 """Shared pytest configuration.
 
 Ensures the ``app/`` source tree is on ``sys.path`` so ``import
-hermes_databricks`` works without installing the package.
+trevor_databricks`` works without installing the package.
 """
 
 from __future__ import annotations

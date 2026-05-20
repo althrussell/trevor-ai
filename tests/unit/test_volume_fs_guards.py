@@ -10,14 +10,14 @@ from pathlib import Path
 
 import pytest
 
-from hermes_databricks.fs.volume_fs import UCVolumeHome
+from trevor_databricks.fs.volume_fs import UCVolumeHome
 
 
 @pytest.fixture()
 def home(tmp_path: Path) -> UCVolumeHome:
     return UCVolumeHome(
-        local_root=tmp_path / "hermes_home",
-        volume_root="/Volumes/main/agents/hermes_home",
+        local_root=tmp_path / "trevor_home",
+        volume_root="/Volumes/main/agents/trevor_home",
     )
 
 
@@ -54,7 +54,7 @@ def test_local_rejects_nested_dotdot(home: UCVolumeHome) -> None:
 
 def test_volume_resolution_basic(home: UCVolumeHome) -> None:
     p = home._resolve_volume("skills/example.md")
-    assert p == "/Volumes/main/agents/hermes_home/skills/example.md"
+    assert p == "/Volumes/main/agents/trevor_home/skills/example.md"
 
 
 def test_volume_rejects_absolute(home: UCVolumeHome) -> None:

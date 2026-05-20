@@ -18,7 +18,7 @@ only.
 exploited against a deployed instance.
 
 Send the report to **althrussell@gmail.com** with subject prefix
-`[hermes-on-databricks security]`. If you want PGP, ask in the first
+`[trevor-on-databricks security]`. If you want PGP, ask in the first
 mail and I'll send a key.
 
 Please include:
@@ -57,7 +57,7 @@ is a security bug.
   * `CAN_USE` on the configured serving endpoint
   * `READ/WRITE` on the two named UC Volumes
   * `READ` on the named secrets scope
-  * `USAGE` + DML on the `hermes_session` Lakebase schema
+  * `USAGE` + DML on the `trevor_session` Lakebase schema
 
 ### Secrets
 
@@ -66,7 +66,7 @@ is a security bug.
 * No secret value is ever written to local disk, the UC Volume mirror,
   or Lakebase tables.
 * The redacting JSON formatter in
-  `app/hermes_databricks/observability/logging.py` strips bearer
+  `app/trevor_databricks/observability/logging.py` strips bearer
   tokens, Telegram bot tokens, Postgres URIs, and `api_key=…`
   query-string fragments from every log record before it reaches
   stderr. This is a defence in depth, not a substitute for not logging
@@ -76,7 +76,7 @@ is a security bug.
 
 * All UC Volume I/O goes through `UCVolumeHome._resolve_local` and
   `_resolve_volume`, which **reject absolute paths and `..` escapes**.
-  The `HERMES_HOME` mirror is bounded to `/tmp/hermes_cache/hermes_home`
+  The `HERMES_HOME` mirror is bounded to `/tmp/trevor_cache/trevor_home`
   on the App and the configured UC Volume path remotely.
 * Lakebase access uses **per-connection short-lived credentials**
   minted from the Databricks SDK; we re-mint before the
@@ -85,18 +85,18 @@ is a security bug.
 ### Tools
 
 * The Hermes tool registry is loaded but **every Databricks-native
-  tool is allowlist-gated** by env vars (`HERMES_DATABRICKS_*`):
+  tool is allowlist-gated** by env vars (`TREVOR_DATABRICKS_*`):
   * `databricks_uc_query_readonly` — read-only SQL validator,
     `SELECT/WITH` only, no stacked queries, mandatory `warehouse_id`,
     `row_limit ≤ 5000`.
   * `databricks_volume_read` — must match
-    `HERMES_DATABRICKS_VOLUME_READ_PREFIXES`, byte-capped.
+    `TREVOR_DATABRICKS_VOLUME_READ_PREFIXES`, byte-capped.
   * `databricks_volume_write_agent_note` — restricted to
     `<artifacts_volume>/<agent-notes>/`.
   * `databricks_jobs_run_allowlist` — must be in
-    `HERMES_DATABRICKS_JOB_ID_ALLOWLIST`.
+    `TREVOR_DATABRICKS_JOB_ID_ALLOWLIST`.
   * `databricks_uc_describe_table` — must match
-    `HERMES_DATABRICKS_QUERY_ALLOWED_TABLES`.
+    `TREVOR_DATABRICKS_QUERY_ALLOWED_TABLES`.
 * The `terminal` backend (`in_app_subprocess`) restricts cwd to
   `<HERMES_HOME>/workspace`, enforces a command denylist (`rm -rf /`,
   `dd`, `mkfs`, `:(){:|:&};:` etc.), and a 60s default timeout.

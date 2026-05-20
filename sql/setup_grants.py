@@ -1,6 +1,6 @@
 # Databricks notebook source
 # MAGIC %md
-# MAGIC # Hermes-on-Databricks — UC grants for the App SP
+# MAGIC # Trevor-on-Databricks — UC grants for the App SP
 # MAGIC
 # MAGIC Run by the bundle job `setup_grants`. Issues idempotent
 # MAGIC Unity Catalog grants on the bundle's catalog + schema so the
@@ -19,12 +19,12 @@
 # COMMAND ----------
 
 dbutils.widgets.text("catalog", "workspace")
-dbutils.widgets.text("schema", "hermes_agent")
+dbutils.widgets.text("schema", "trevor_agent")
 dbutils.widgets.text("app_sp_client_id", "")
 dbutils.widgets.dropdown("enable_create_schema", "false", ["true", "false"])
 
 catalog = dbutils.widgets.get("catalog") or "workspace"
-schema = dbutils.widgets.get("schema") or "hermes_agent"
+schema = dbutils.widgets.get("schema") or "trevor_agent"
 app_sp_client_id = dbutils.widgets.get("app_sp_client_id") or ""
 enable_create_schema = dbutils.widgets.get("enable_create_schema") == "true"
 

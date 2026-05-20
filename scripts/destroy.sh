@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Hermes-on-Databricks — destroy script. Removes all bundle resources.
+# Trevor-on-Databricks — destroy script. Removes all bundle resources.
 #
 # Usage:
 #   scripts/destroy.sh
@@ -13,7 +13,7 @@
 set -euo pipefail
 
 TARGET="${TARGET:-free}"
-PROFILE="${PROFILE:-hermes-free}"
+PROFILE="${PROFILE:-trevor-free}"
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT_DIR"

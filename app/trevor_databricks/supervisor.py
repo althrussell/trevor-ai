@@ -3,7 +3,7 @@
 The supervisor is built incrementally across phases:
 
 * Phase 1: minimal start/stop, registers a baseline health check.
-* Phase 2: bootstraps Hermes (``HermesRuntime``).
+* Phase 2: bootstraps Hermes (``TrevorRuntime``).
 * Phase 3: wires the Databricks model provider.
 * Phase 4: constructs the LakebaseSessionDB and registers its health check.
 * Phase 5: pulls the UC Volume mirror into the local cache and starts
@@ -18,13 +18,13 @@ from __future__ import annotations
 import asyncio
 import logging
 
-from hermes_databricks.config import Config
-from hermes_databricks.health import HealthRegistry
+from trevor_databricks.config import Config
+from trevor_databricks.health import HealthRegistry
 
-log = logging.getLogger("hermes_databricks.supervisor")
+log = logging.getLogger("trevor_databricks.supervisor")
 
 
-class HermesSupervisor:
+class TrevorSupervisor:
     """Owns the runtime + background tasks for the Databricks App."""
 
     def __init__(self, cfg: Config, health: HealthRegistry) -> None:
@@ -119,13 +119,13 @@ class HermesSupervisor:
 
     async def _start_runtime(self) -> None:
         try:
-            from hermes_databricks.runtime import HermesRuntime
+            from trevor_databricks.runtime import TrevorRuntime
         except Exception:
-            log.exception("HermesRuntime import failed; degraded mode")
+            log.exception("TrevorRuntime import failed; degraded mode")
             return
 
         try:
-            runtime = HermesRuntime(self.cfg)
+            runtime = TrevorRuntime(self.cfg)
             await asyncio.to_thread(runtime.bootstrap)
             self.runtime = runtime
             self.health.register(
@@ -151,7 +151,7 @@ class HermesSupervisor:
                 description="Databricks Model Serving endpoint is queryable.",
             )
         except Exception:
-            log.exception("HermesRuntime bootstrap failed; degraded mode")
+            log.exception("TrevorRuntime bootstrap failed; degraded mode")
 
     async def _start_telegram(self) -> None:
         if not self.cfg.telegram_enabled:
@@ -162,7 +162,7 @@ class HermesSupervisor:
             return
 
         try:
-            from hermes_databricks.telegram_polling import TelegramClient
+            from trevor_databricks.telegram_polling import TelegramClient
         except Exception:
             log.exception("Telegram client import failed")
             return
@@ -266,7 +266,7 @@ class HermesSupervisor:
                             # past the 1h token expiry.
                             if self.cfg.mcp_enabled:
                                 try:
-                                    from hermes_databricks.mcp_bootstrap import (
+                                    from trevor_databricks.mcp_bootstrap import (
                                         refresh_mcp_config,
                                     )
 

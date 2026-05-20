@@ -22,15 +22,15 @@ Hermes contract (from ``tools/registry.py``):
 Allowlists are driven by env vars (overridable through ``app.yaml`` or
 bundle variables):
 
-* ``HERMES_DATABRICKS_QUERY_ALLOWED_TABLES`` — CSV of
+* ``TREVOR_DATABRICKS_QUERY_ALLOWED_TABLES`` — CSV of
   ``catalog.schema.table`` patterns; ``*`` wildcards allowed.
-* ``HERMES_DATABRICKS_JOB_ID_ALLOWLIST`` — CSV of integer job ids.
-* ``HERMES_DATABRICKS_VOLUME_READ_PREFIXES`` — CSV of
-  ``/Volumes/...`` prefixes (the configured hermes_home and artifacts
+* ``TREVOR_DATABRICKS_JOB_ID_ALLOWLIST`` — CSV of integer job ids.
+* ``TREVOR_DATABRICKS_VOLUME_READ_PREFIXES`` — CSV of
+  ``/Volumes/...`` prefixes (the configured trevor_home and artifacts
   volumes are always included).
-* ``HERMES_DATABRICKS_AGENT_NOTES_SUBPATH`` — relative subpath under
+* ``TREVOR_DATABRICKS_AGENT_NOTES_SUBPATH`` — relative subpath under
   the artifacts volume (default ``agent-notes``).
-* ``HERMES_DATABRICKS_WAREHOUSE_ID`` — SQL warehouse for
+* ``TREVOR_DATABRICKS_WAREHOUSE_ID`` — SQL warehouse for
   ``databricks_uc_query_readonly``.
 
 If a tool is invoked without the required Databricks SDK / endpoint
@@ -48,16 +48,16 @@ import re
 from dataclasses import dataclass
 from typing import Any
 
-from hermes_databricks.config import Config, load as load_cfg
-from hermes_databricks.tools import terminal_backend as _term
-from hermes_databricks.tools.sql_guard import (
+from trevor_databricks.config import Config, load as load_cfg
+from trevor_databricks.tools import terminal_backend as _term
+from trevor_databricks.tools.sql_guard import (
     find_destructive_verbs,
     normalise_for_execute,
     parse_targets,
     validate_readonly,
 )
 
-log = logging.getLogger("hermes_databricks.tools.databricks_toolset")
+log = logging.getLogger("trevor_databricks.tools.databricks_toolset")
 
 
 # ---------------------------------------------------------------------
@@ -96,12 +96,12 @@ def _ok(**payload) -> str:
 
 
 def _allowed_tables() -> list[str]:
-    raw = os.environ.get("HERMES_DATABRICKS_QUERY_ALLOWED_TABLES", "")
+    raw = os.environ.get("TREVOR_DATABRICKS_QUERY_ALLOWED_TABLES", "")
     return [s.strip() for s in raw.split(",") if s.strip()]
 
 
 def _allowed_job_ids() -> list[int]:
-    raw = os.environ.get("HERMES_DATABRICKS_JOB_ID_ALLOWLIST", "")
+    raw = os.environ.get("TREVOR_DATABRICKS_JOB_ID_ALLOWLIST", "")
     out: list[int] = []
     for s in raw.split(","):
         s = s.strip()
@@ -115,9 +115,9 @@ def _allowed_job_ids() -> list[int]:
 
 
 def _allowed_volume_prefixes(cfg: Config) -> list[str]:
-    raw = os.environ.get("HERMES_DATABRICKS_VOLUME_READ_PREFIXES", "")
+    raw = os.environ.get("TREVOR_DATABRICKS_VOLUME_READ_PREFIXES", "")
     out = [s.strip() for s in raw.split(",") if s.strip()]
-    out.extend([cfg.hermes_home_volume_path, cfg.artifacts_volume_path])
+    out.extend([cfg.trevor_home_volume_path, cfg.artifacts_volume_path])
     seen: list[str] = []
     for p in out:
         if p and p not in seen:
@@ -155,7 +155,7 @@ def _writes_allowed(cfg: Config | None = None) -> tuple[bool, str | None]:
     cfg = cfg or load_cfg()
     if not cfg.writes_enabled:
         return False, (
-            "Databricks writes are disabled. Set HERMES_DATABRICKS_WRITES_ENABLED=true "
+            "Databricks writes are disabled. Set TREVOR_DATABRICKS_WRITES_ENABLED=true "
             "(and grant the App SP the matching UC privileges) to enable mutating tools."
         )
     return True, None
@@ -242,7 +242,7 @@ def _h_uc_describe_table(args: dict, **_kw) -> str:
     patterns = _allowed_tables()
     if patterns and not _table_match(full_table_name, patterns):
         return _err(
-            "table not in HERMES_DATABRICKS_QUERY_ALLOWED_TABLES allowlist",
+            "table not in TREVOR_DATABRICKS_QUERY_ALLOWED_TABLES allowlist",
             allowlist=patterns,
             full_table_name=full_table_name,
         )
@@ -277,10 +277,10 @@ def _h_uc_query_readonly(args: dict, **_kw) -> str:
     guard = validate_readonly(sql)
     if not guard.ok:
         return _err(f"SQL rejected by read-only guard: {guard.reason}")
-    warehouse_id = os.environ.get("HERMES_DATABRICKS_WAREHOUSE_ID", "").strip()
+    warehouse_id = os.environ.get("TREVOR_DATABRICKS_WAREHOUSE_ID", "").strip()
     if not warehouse_id:
         return _err(
-            "no SQL warehouse configured. Set HERMES_DATABRICKS_WAREHOUSE_ID "
+            "no SQL warehouse configured. Set TREVOR_DATABRICKS_WAREHOUSE_ID "
             "to a warehouse the App SP CAN_USE."
         )
     try:
@@ -369,12 +369,10 @@ def _h_sql_execute(args: dict, **_kw) -> str:
 
         targets = parse_targets(cleaned)
         allow_patterns = _allowed_write_schemas(cfg)
-        denied = [
-            t for t in targets if not _schema_match(t, allow_patterns)
-        ]
+        denied = [t for t in targets if not _schema_match(t, allow_patterns)]
         if denied:
             return _err(
-                "sql target(s) not in HERMES_DATABRICKS_WRITE_ALLOWED_SCHEMAS",
+                "sql target(s) not in TREVOR_DATABRICKS_WRITE_ALLOWED_SCHEMAS",
                 denied=denied,
                 allowed=allow_patterns,
                 head=head,
@@ -383,7 +381,7 @@ def _h_sql_execute(args: dict, **_kw) -> str:
         destructive = find_destructive_verbs(cleaned)
         if destructive and not _yolo(cfg):
             return _err(
-                "destructive SQL requires HERMES_DATABRICKS_YOLO=true",
+                "destructive SQL requires TREVOR_DATABRICKS_YOLO=true",
                 destructive=destructive,
                 head=head,
             )
@@ -393,13 +391,12 @@ def _h_sql_execute(args: dict, **_kw) -> str:
                 {"head": head, "destructive": destructive, "targets": targets},
             )
 
-    warehouse_id = (
-        (args.get("warehouse_id") or "").strip()
-        or os.environ.get("HERMES_DATABRICKS_WAREHOUSE_ID", "").strip()
-    )
+    warehouse_id = (args.get("warehouse_id") or "").strip() or os.environ.get(
+        "TREVOR_DATABRICKS_WAREHOUSE_ID", ""
+    ).strip()
     if not warehouse_id:
         return _err(
-            "no SQL warehouse configured. Set HERMES_DATABRICKS_WAREHOUSE_ID "
+            "no SQL warehouse configured. Set TREVOR_DATABRICKS_WAREHOUSE_ID "
             "or pass warehouse_id explicitly."
         )
 
@@ -511,7 +508,7 @@ def _h_volume_write_agent_note(args: dict, **_kw) -> str:
     if not relative_path or relative_path.startswith("/") or ".." in relative_path.split("/"):
         return _err("relative_path must be a non-empty path without '..' or leading '/'")
     cfg = load_cfg()
-    subpath = os.environ.get("HERMES_DATABRICKS_AGENT_NOTES_SUBPATH", "agent-notes").strip("/")
+    subpath = os.environ.get("TREVOR_DATABRICKS_AGENT_NOTES_SUBPATH", "agent-notes").strip("/")
     target = f"{cfg.artifacts_volume_path.rstrip('/')}/{subpath}/{relative_path.lstrip('/')}"
     try:
         w = _client()
@@ -556,7 +553,7 @@ def _h_volume_write(args: dict, **_kw) -> str:
     allowed = _allowed_write_volumes(cfg)
     if not _path_match(path, allowed):
         return _err(
-            "path not in HERMES_DATABRICKS_WRITE_ALLOWED_VOLUMES",
+            "path not in TREVOR_DATABRICKS_WRITE_ALLOWED_VOLUMES",
             allowed_prefixes=allowed,
             path=path,
         )
@@ -576,7 +573,7 @@ def _h_volume_write(args: dict, **_kw) -> str:
                 existed = False
             if existed:
                 return _err(
-                    "overwrite of existing volume file requires HERMES_DATABRICKS_YOLO=true",
+                    "overwrite of existing volume file requires TREVOR_DATABRICKS_YOLO=true",
                     path=path,
                 )
         if overwrite and yolo:
@@ -649,14 +646,14 @@ def _h_volume_delete(args: dict, **_kw) -> str:
         return _err(reason or "writes_disabled", path=path)
     if not _yolo(cfg):
         return _err(
-            "volume delete is destructive and requires HERMES_DATABRICKS_YOLO=true",
+            "volume delete is destructive and requires TREVOR_DATABRICKS_YOLO=true",
             path=path,
         )
 
     allowed = _allowed_write_volumes(cfg)
     if not _path_match(path, allowed):
         return _err(
-            "path not in HERMES_DATABRICKS_WRITE_ALLOWED_VOLUMES",
+            "path not in TREVOR_DATABRICKS_WRITE_ALLOWED_VOLUMES",
             allowed_prefixes=allowed,
             path=path,
         )
@@ -684,7 +681,7 @@ def _h_volume_mkdir(args: dict, **_kw) -> str:
     allowed = _allowed_write_volumes(cfg)
     if not _path_match(path, allowed):
         return _err(
-            "path not in HERMES_DATABRICKS_WRITE_ALLOWED_VOLUMES",
+            "path not in TREVOR_DATABRICKS_WRITE_ALLOWED_VOLUMES",
             allowed_prefixes=allowed,
             path=path,
         )
@@ -733,7 +730,7 @@ def _h_jobs_run_allowlist(args: dict, **_kw) -> str:
     allowed = _allowed_job_ids()
     if not allowed or job_id_int not in allowed:
         return _err(
-            "job_id not in HERMES_DATABRICKS_JOB_ID_ALLOWLIST",
+            "job_id not in TREVOR_DATABRICKS_JOB_ID_ALLOWLIST",
             allowlist=allowed,
             job_id=job_id_int,
         )
@@ -761,7 +758,7 @@ def _h_terminal(args: dict, **_kw) -> str:
         result = _term.run(
             [str(a) for a in cmd],
             backend=cfg.terminal_backend,
-            hermes_home=cfg.hermes_home,
+            trevor_home=cfg.trevor_home,
             cwd=cwd,
             timeout=timeout,
         )
@@ -798,7 +795,7 @@ def _h_python_exec(args: dict, **_kw) -> str:
     try:
         import uuid as _uuid
 
-        workspace = _term.workspace_dir(cfg.hermes_home)
+        workspace = _term.workspace_dir(cfg.trevor_home)
         scratch = workspace / "_python_exec"
         scratch.mkdir(parents=True, exist_ok=True)
         script_path = scratch / f"{_uuid.uuid4().hex}.py"
@@ -807,7 +804,7 @@ def _h_python_exec(args: dict, **_kw) -> str:
         result = _term.run(
             ["python3", str(script_path)],
             backend=cfg.terminal_backend,
-            hermes_home=cfg.hermes_home,
+            trevor_home=cfg.trevor_home,
             cwd="_python_exec",
             timeout=timeout,
         )
@@ -890,11 +887,11 @@ _TOOL_SPECS: list[_ToolSpec] = [
         name="databricks_sql_execute",
         description=(
             "Run a single SQL statement (SELECT, DML, or DDL) against the configured "
-            "SQL warehouse. Requires HERMES_DATABRICKS_WRITES_ENABLED=true for mutating "
+            "SQL warehouse. Requires TREVOR_DATABRICKS_WRITES_ENABLED=true for mutating "
             "statements. Destructive verbs (DROP, TRUNCATE, DELETE without WHERE, "
             "ALTER ... DROP, CREATE OR REPLACE, REVOKE, VACUUM, PURGE) additionally "
-            "require HERMES_DATABRICKS_YOLO=true. Targets must match "
-            "HERMES_DATABRICKS_WRITE_ALLOWED_SCHEMAS (defaults to the bundle's own "
+            "require TREVOR_DATABRICKS_YOLO=true. Targets must match "
+            "TREVOR_DATABRICKS_WRITE_ALLOWED_SCHEMAS (defaults to the bundle's own "
             "catalog.schema.*). Stacked queries are rejected."
         ),
         parameters={
@@ -906,7 +903,7 @@ _TOOL_SPECS: list[_ToolSpec] = [
                 },
                 "warehouse_id": {
                     "type": "string",
-                    "description": "Optional override; defaults to HERMES_DATABRICKS_WAREHOUSE_ID.",
+                    "description": "Optional override; defaults to TREVOR_DATABRICKS_WAREHOUSE_ID.",
                 },
                 "row_limit": {
                     "type": "integer",
@@ -959,9 +956,9 @@ _TOOL_SPECS: list[_ToolSpec] = [
         name="databricks_volume_write",
         description=(
             "Write a file to any UC Volume the App SP can write to. The path must "
-            "match HERMES_DATABRICKS_WRITE_ALLOWED_VOLUMES (defaults to the bundle's "
-            "managed volumes) and HERMES_DATABRICKS_WRITES_ENABLED=true. Overwriting "
-            "an existing file requires HERMES_DATABRICKS_YOLO=true."
+            "match TREVOR_DATABRICKS_WRITE_ALLOWED_VOLUMES (defaults to the bundle's "
+            "managed volumes) and TREVOR_DATABRICKS_WRITES_ENABLED=true. Overwriting "
+            "an existing file requires TREVOR_DATABRICKS_YOLO=true."
         ),
         parameters={
             "type": "object",
@@ -989,7 +986,7 @@ _TOOL_SPECS: list[_ToolSpec] = [
         description=(
             "List the contents of a UC Volume directory the App SP can read. Set "
             "recursive=true for a deep listing. The path must be allowed by either "
-            "HERMES_DATABRICKS_VOLUME_READ_PREFIXES or HERMES_DATABRICKS_WRITE_ALLOWED_VOLUMES."
+            "TREVOR_DATABRICKS_VOLUME_READ_PREFIXES or TREVOR_DATABRICKS_WRITE_ALLOWED_VOLUMES."
         ),
         parameters={
             "type": "object",
@@ -1009,8 +1006,8 @@ _TOOL_SPECS: list[_ToolSpec] = [
         name="databricks_volume_delete",
         description=(
             "Delete a file in a UC Volume. ALWAYS destructive — requires both "
-            "HERMES_DATABRICKS_WRITES_ENABLED=true and HERMES_DATABRICKS_YOLO=true. "
-            "Path must be inside HERMES_DATABRICKS_WRITE_ALLOWED_VOLUMES."
+            "TREVOR_DATABRICKS_WRITES_ENABLED=true and TREVOR_DATABRICKS_YOLO=true. "
+            "Path must be inside TREVOR_DATABRICKS_WRITE_ALLOWED_VOLUMES."
         ),
         parameters={
             "type": "object",
@@ -1026,13 +1023,16 @@ _TOOL_SPECS: list[_ToolSpec] = [
         name="databricks_volume_mkdir",
         description=(
             "Create a directory inside a UC Volume the App SP can write to. Requires "
-            "HERMES_DATABRICKS_WRITES_ENABLED=true. Path must be inside "
-            "HERMES_DATABRICKS_WRITE_ALLOWED_VOLUMES."
+            "TREVOR_DATABRICKS_WRITES_ENABLED=true. Path must be inside "
+            "TREVOR_DATABRICKS_WRITE_ALLOWED_VOLUMES."
         ),
         parameters={
             "type": "object",
             "properties": {
-                "path": {"type": "string", "description": "Absolute /Volumes/... directory to create."},
+                "path": {
+                    "type": "string",
+                    "description": "Absolute /Volumes/... directory to create.",
+                },
             },
             "required": ["path"],
         },
@@ -1048,7 +1048,7 @@ _TOOL_SPECS: list[_ToolSpec] = [
     ),
     _ToolSpec(
         name="databricks_jobs_run_allowlist",
-        description="Trigger a Databricks Job. The job_id must be in HERMES_DATABRICKS_JOB_ID_ALLOWLIST.",
+        description="Trigger a Databricks Job. The job_id must be in TREVOR_DATABRICKS_JOB_ID_ALLOWLIST.",
         parameters={
             "type": "object",
             "properties": {

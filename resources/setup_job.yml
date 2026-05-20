@@ -1,7 +1,7 @@
 resources:
   jobs:
     setup_lakebase:
-      name: hermes-setup-lakebase
+      name: trevor-setup-lakebase
       tasks:
         - task_key: create_schema_and_grants
           notebook_task:
@@ -11,11 +11,11 @@ resources:
               # the Lakebase instance is bundle-managed or externally-
               # managed.
               instance_name: ${var.lakebase_instance}
-              app_sp_client_id: ${resources.apps.hermes_app.service_principal_client_id}
-              schema_name: hermes_session
+              app_sp_client_id: ${resources.apps.trevor_app.service_principal_client_id}
+              schema_name: trevor_session
 
     setup_grants:
-      name: hermes-setup-grants
+      name: trevor-setup-grants
       # Idempotent UC grants for the App SP so the skill-driven
       # primitives (databricks_sql_execute, databricks_volume_*,
       # databricks_python_exec) can actually do their job. Workspace-
@@ -28,7 +28,7 @@ resources:
             base_parameters:
               catalog: ${var.catalog}
               schema: ${var.schema}
-              app_sp_client_id: ${resources.apps.hermes_app.service_principal_client_id}
+              app_sp_client_id: ${resources.apps.trevor_app.service_principal_client_id}
               # Flip to "true" if you also want the App SP to create
               # new schemas in the catalog (e.g. for the
               # databricks-unity-catalog skill's CREATE SCHEMA recipe).

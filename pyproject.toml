@@ -3,7 +3,7 @@ requires = ["setuptools>=68", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "hermes-on-databricks"
+name = "trevor-on-databricks"
 version = "0.1.0"
 description = "Run the full NousResearch Hermes agent inside a Databricks App on Databricks Free Edition."
 readme = "README.md"
@@ -68,7 +68,7 @@ extend-exclude = [
     ".venv",
     "build",
     "dist",
-    "hermes_home_local",
+    "trevor_home_local",
     ".databricks",
     "vendor",
 ]
@@ -98,9 +98,10 @@ ignore = [
 # Databricks notebooks have widgets, dbutils/spark notebook globals, and
 # magic-cell-style interleaved imports that ruff can't model.
 "sql/setup_lakebase.py" = ["F821", "E402"]
+"sql/setup_grants.py" = ["F821", "E402"]
 
 [tool.ruff.lint.isort]
-known-first-party = ["hermes_databricks"]
+known-first-party = ["trevor_databricks"]
 combine-as-imports = true
 
 [tool.ruff.format]

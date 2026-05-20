@@ -1,4 +1,4 @@
-"""HermesRuntime — owns the embedded Hermes AIAgent inside the App.
+"""TrevorRuntime — owns the embedded Hermes AIAgent inside the App.
 
 This module is grown across phases. The Phase 1 baseline only:
   * resolves config
@@ -21,12 +21,12 @@ import sys
 import time
 from typing import Any
 
-from hermes_databricks.config import Config
+from trevor_databricks.config import Config
 
-log = logging.getLogger("hermes_databricks.runtime")
+log = logging.getLogger("trevor_databricks.runtime")
 
 
-class HermesRuntime:
+class TrevorRuntime:
     """The single owner of the embedded Hermes AIAgent inside the App."""
 
     def __init__(self, cfg: Config) -> None:
@@ -62,7 +62,7 @@ class HermesRuntime:
         try:
             from pathlib import Path as _Path
 
-            from hermes_databricks.fs.volume_fs import UCVolumeHome
+            from trevor_databricks.fs.volume_fs import UCVolumeHome
 
             self.home_fs = UCVolumeHome.from_config(self.cfg)
             self.home_fs.ensure_local_dirs()
@@ -115,23 +115,19 @@ class HermesRuntime:
             self.errors["uc_volume"] = f"{type(exc).__name__}: {exc}"
 
         # Ensure HERMES_HOME env is set before anything in Hermes touches it.
-        os.environ["HERMES_HOME"] = str(self.cfg.hermes_home)
-        self.cfg.hermes_home.mkdir(parents=True, exist_ok=True)
+        os.environ["HERMES_HOME"] = str(self.cfg.trevor_home)
+        self.cfg.trevor_home.mkdir(parents=True, exist_ok=True)
 
         # MCP bootstrap: when enabled, write the Databricks managed
         # SQL MCP server into HERMES_HOME/config.yaml so the agent can
         # discover Unity Catalog tables/catalogs/schemas via MCP. Token
         # rotation is handled by the supervisor heartbeat.
         try:
-            from hermes_databricks.mcp_bootstrap import refresh_mcp_config
+            from trevor_databricks.mcp_bootstrap import refresh_mcp_config
 
             mcp_status = refresh_mcp_config(self.cfg)
             log.info("MCP bootstrap pass", extra={"extras": mcp_status})
-            if (
-                self.cfg.mcp_enabled
-                and not mcp_status.get("applied")
-                and mcp_status.get("reason")
-            ):
+            if self.cfg.mcp_enabled and not mcp_status.get("applied") and mcp_status.get("reason"):
                 self.errors["mcp_bootstrap"] = str(mcp_status.get("reason"))
         except Exception as exc:
             log.exception("MCP bootstrap failed")
@@ -139,7 +135,7 @@ class HermesRuntime:
 
         # Phase 4: Lakebase SessionDB
         try:
-            from hermes_databricks.state.lakebase_session_db import LakebaseSessionDB
+            from trevor_databricks.state.lakebase_session_db import LakebaseSessionDB
 
             self.session_db = LakebaseSessionDB.from_config(self.cfg)
             self.session_db.ensure_schema()
@@ -149,7 +145,7 @@ class HermesRuntime:
 
         # Phase 3: Databricks model provider
         try:
-            from hermes_databricks.databricks_provider import DatabricksOpenAIClientFactory
+            from trevor_databricks.databricks_provider import DatabricksOpenAIClientFactory
 
             self.provider = DatabricksOpenAIClientFactory(endpoint=self.cfg.llm_endpoint)
             # Force a client construction so we surface obvious config errors early.
@@ -178,16 +174,16 @@ class HermesRuntime:
         #
         # IMPORTANT: ``HERMES_HOME`` MUST be set in the environment
         # before importing any ``hermes_*`` module, because
-        # ``hermes_constants.get_hermes_home()`` is called eagerly at
+        # ``hermes_constants.get_trevor_home()`` is called eagerly at
         # import time from several submodules.
-        os.environ["HERMES_HOME"] = str(self.cfg.hermes_home)
+        os.environ["HERMES_HOME"] = str(self.cfg.trevor_home)
         try:
-            self.cfg.hermes_home.mkdir(parents=True, exist_ok=True)
+            self.cfg.trevor_home.mkdir(parents=True, exist_ok=True)
         except Exception:
-            log.debug("hermes_home mkdir failed", exc_info=True)
+            log.debug("trevor_home mkdir failed", exc_info=True)
 
         try:
-            from hermes_cli.config import ensure_hermes_home  # type: ignore
+            from hermes_cli.config import ensure_trevor_home  # type: ignore
             from hermes_logging import setup_logging as hermes_setup_logging  # type: ignore
             from run_agent import AIAgent  # type: ignore
         except Exception as exc:
@@ -195,14 +191,14 @@ class HermesRuntime:
 
         # 2. Make sure the home directory tree exists.
         try:
-            ensure_hermes_home()
+            ensure_trevor_home()
         except Exception:
-            log.exception("ensure_hermes_home failed")
+            log.exception("ensure_trevor_home failed")
 
         # 3. Initialise Hermes' own logging in 'cli' mode (file rotation).
         try:
             hermes_setup_logging(
-                hermes_home=self.cfg.hermes_home,
+                trevor_home=self.cfg.trevor_home,
                 mode="cli",
                 force=True,
             )
@@ -212,7 +208,7 @@ class HermesRuntime:
         # 4. Optionally register the 'databricks' provider profile so
         #    Hermes' CLI/introspection sees us as a first-class provider.
         try:
-            from hermes_databricks.databricks_provider import register_provider_profile
+            from trevor_databricks.databricks_provider import register_provider_profile
 
             register_provider_profile(self.cfg)
         except Exception:
@@ -221,7 +217,7 @@ class HermesRuntime:
         # 5. Construct AIAgent. We pass placeholder api_key/base_url so
         #    Hermes' OpenAI client construction succeeds; we then swap
         #    .client with the Workspace-authenticated one in Phase 3.
-        from hermes_databricks.tools.backend_registry import build_toolset_selection
+        from trevor_databricks.tools.backend_registry import build_toolset_selection
 
         enabled, disabled = build_toolset_selection(self.cfg)
 
@@ -261,7 +257,7 @@ class HermesRuntime:
 
         # 7. Phase 7: register the Databricks-native toolset.
         try:
-            from hermes_databricks.tools.databricks_toolset import register_databricks_toolset
+            from trevor_databricks.tools.databricks_toolset import register_databricks_toolset
 
             register_databricks_toolset(self.cfg, home_fs=self.home_fs)
         except Exception:
@@ -284,7 +280,7 @@ class HermesRuntime:
             extra={
                 "extras": {
                     "model": self.cfg.llm_endpoint,
-                    "hermes_home": str(self.cfg.hermes_home),
+                    "trevor_home": str(self.cfg.trevor_home),
                     "session_db": "lakebase" if self.session_db is not None else "none",
                     "tools": len(enabled or []),
                 }
@@ -327,7 +323,7 @@ class HermesRuntime:
                     "Neither the Hermes AIAgent nor the Databricks "
                     "provider is initialised. See /debug/runtime.errors."
                 )
-            from hermes_databricks.databricks_provider import quick_chat
+            from trevor_databricks.databricks_provider import quick_chat
 
             payload = quick_chat(self.provider, message=user_message, system=system_message)
             payload["session_id"] = session_id
@@ -348,14 +344,34 @@ class HermesRuntime:
             except Exception:
                 log.exception("ensure_session failed")
 
+        # Load prior conversation history from Lakebase so the agent
+        # actually remembers previous turns. Hermes' AIAgent will not
+        # auto-load history from ``session_db`` in this wiring — we
+        # have to feed it explicitly via ``conversation_history``.
+        # We strip role=="system" because the caller (or the agent's
+        # own prompt assembler) supplies the system message separately.
+        prior_history: list[dict[str, Any]] | None = None
+        if self.session_db is not None:
+            try:
+                history = self.session_db.get_messages_as_conversation(session_id)
+                prior_history = [m for m in history if m.get("role") != "system"] or None
+            except Exception:
+                log.exception("Failed to load prior conversation history; continuing empty")
+
         agent = self.agent
         agent.session_id = session_id  # type: ignore[attr-defined]
 
         result = agent.run_conversation(
             user_message=user_message,
             system_message=system_message,
-            conversation_history=None,
+            conversation_history=prior_history,
         )
+
+        # NOTE: Hermes' AIAgent persists its own messages via the
+        # wired ``session_db`` (writing user/assistant/tool rows as
+        # the turn progresses). We intentionally don't append them
+        # again here to avoid duplicates. The prior_history load
+        # above is what actually restores context across turns.
 
         if isinstance(result, dict):
             # Hermes' canonical key is ``final_response``. Older code
@@ -448,7 +464,7 @@ class HermesRuntime:
             "hermes_version_pkg": hermes_pkg_version,
             "provider": "databricks",
             "model_endpoint": self.cfg.llm_endpoint,
-            "hermes_home": str(self.cfg.hermes_home),
+            "trevor_home": str(self.cfg.trevor_home),
             "agent_loaded": self.agent is not None,
             "session_db": type(self.session_db).__name__ if self.session_db else None,
             "home_fs": type(self.home_fs).__name__ if self.home_fs else None,
@@ -457,8 +473,8 @@ class HermesRuntime:
         }
 
     def tool_summary(self) -> dict[str, Any]:
-        from hermes_databricks.tools.backend_registry import describe_backends
-        from hermes_databricks.tools.databricks_toolset import tool_names as _db_tool_names
+        from trevor_databricks.tools.backend_registry import describe_backends
+        from trevor_databricks.tools.databricks_toolset import tool_names as _db_tool_names
 
         out = describe_backends(self.cfg)
         out["databricks_native_tools"] = _db_tool_names()

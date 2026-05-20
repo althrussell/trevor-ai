@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from hermes_databricks.fs.volume_fs import UCVolumeHome
+from trevor_databricks.fs.volume_fs import UCVolumeHome
 
 
 @pytest.fixture

@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# Hermes-on-Databricks — end-to-end smoke test.
+# Trevor-on-Databricks — end-to-end smoke test.
 #
 # Run after `scripts/deploy.sh`. Exits non-zero on first failure.
 #
 # Usage:
 #   APP_URL=https://...databricksapps.com scripts/smoke_test.sh
-#   PROFILE=hermes-free scripts/smoke_test.sh   # resolves URL via 'apps get'
+#   PROFILE=trevor-free scripts/smoke_test.sh   # resolves URL via 'apps get'
 #
 # Environment toggles:
 #   SKIP_MODEL_TURN=1   skip the /debug/model-turn call
@@ -21,8 +21,8 @@
 
 set -euo pipefail
 
-PROFILE="${PROFILE:-hermes-free}"
-APP_NAME="${APP_NAME:-hermes-agent}"
+PROFILE="${PROFILE:-trevor-free}"
+APP_NAME="${APP_NAME:-trevor-agent}"
 EXIT_CODE=0
 
 if [[ -z "${APP_URL:-}" ]]; then

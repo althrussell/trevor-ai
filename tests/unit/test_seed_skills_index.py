@@ -58,9 +58,7 @@ def test_skill_md_has_frontmatter_and_description(skill_md: Path) -> None:
     assert fm is not None, f"missing YAML frontmatter in {skill_md}"
     body = fm.group(1)
     assert re.search(r"^name:\s*\S+", body, re.MULTILINE), f"missing 'name:' in {skill_md}"
-    assert re.search(r"^description:", body, re.MULTILINE), (
-        f"missing 'description:' in {skill_md}"
-    )
+    assert re.search(r"^description:", body, re.MULTILINE), f"missing 'description:' in {skill_md}"
 
 
 def test_upstream_license_is_databricks_license() -> None:

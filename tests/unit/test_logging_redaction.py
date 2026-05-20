@@ -5,12 +5,12 @@ from __future__ import annotations
 import json
 import logging
 
-from hermes_databricks.observability.logging import RedactingFormatter, redact
+from trevor_databricks.observability.logging import RedactingFormatter, redact
 
 
 def _record(message: str, extras: dict | None = None) -> logging.LogRecord:
     rec = logging.LogRecord(
-        name="hermes_databricks.test",
+        name="trevor_databricks.test",
         level=logging.INFO,
         pathname=__file__,
         lineno=1,

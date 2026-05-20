@@ -27,7 +27,7 @@ from typing import Any
 
 import pytest
 
-from hermes_databricks import databricks_provider as dp
+from trevor_databricks import databricks_provider as dp
 
 # ---------------------------------------------------------------------
 # _sanitise_oai_kwargs — message-level scrub
@@ -235,9 +235,7 @@ def test_sanitise_strips_array_schema_constraints():
     assert cleaned_tags["type"] == "array"
     assert cleaned_tags["items"] == {"type": "string"}
     # Sibling string property untouched.
-    assert out["tools"][0]["function"]["parameters"]["properties"]["query"] == {
-        "type": "string"
-    }
+    assert out["tools"][0]["function"]["parameters"]["properties"]["query"] == {"type": "string"}
     # Caller tool dict untouched.
     assert tool["function"]["parameters"]["properties"]["tags"]["maxItems"] == 10
 
@@ -355,10 +353,7 @@ def test_legacy_scrub_alias_still_works():
     """``_scrub_integer_schema_constraints`` is aliased to the unified scrubber
     for backwards compatibility with any downstream import path. Drop this
     test when the alias is removed (no callers remain in-repo today)."""
-    assert (
-        dp._scrub_integer_schema_constraints
-        is dp._scrub_unsupported_schema_constraints
-    )
+    assert dp._scrub_integer_schema_constraints is dp._scrub_unsupported_schema_constraints
 
 
 # ---------------------------------------------------------------------
@@ -396,12 +391,12 @@ def test_install_request_sanitiser_is_idempotent(fake_openai_completions):
 
     dp._install_request_sanitiser(SimpleNamespace())  # arg is unused by impl
     first_create = fake_sync.create
-    assert getattr(first_create, "_hermes_databricks_sanitised", False) is True
+    assert getattr(first_create, "_trevor_databricks_sanitised", False) is True
 
     dp._install_request_sanitiser(SimpleNamespace())
     second_create = fake_sync.create
     assert second_create is first_create  # not re-wrapped
-    assert getattr(second_create, "_hermes_databricks_sanitised", False) is True
+    assert getattr(second_create, "_trevor_databricks_sanitised", False) is True
 
 
 def test_installed_sanitiser_actually_strips_outbound_kwargs(fake_openai_completions):
@@ -513,9 +508,7 @@ def test_install_subagent_hook_re_applies_to_fresh_databricks_agents(
     assert "serving-endpoints" in (child.base_url or "")
 
 
-def test_install_subagent_hook_skips_non_databricks_children(
-    fake_openai_completions, monkeypatch
-):
+def test_install_subagent_hook_skips_non_databricks_children(fake_openai_completions, monkeypatch):
     """Children whose provider isn't 'databricks' must be left alone."""
 
     class FakeAIAgent:
@@ -569,16 +562,14 @@ def test_install_subagent_hook_is_idempotent(fake_openai_completions, monkeypatc
 
     assert factory.install_subagent_hook() is True
     first_init = FakeAIAgent.__init__
-    assert getattr(first_init, "_hermes_databricks_subagent_hook", False) is True
+    assert getattr(first_init, "_trevor_databricks_subagent_hook", False) is True
 
     assert factory.install_subagent_hook() is True
     second_init = FakeAIAgent.__init__
     assert second_init is first_init  # not re-wrapped
 
 
-def test_install_subagent_hook_skips_already_applied_agents(
-    fake_openai_completions, monkeypatch
-):
+def test_install_subagent_hook_skips_already_applied_agents(fake_openai_completions, monkeypatch):
     """If __init__ leaves _databricks_applied=True (parent path), don't double-apply."""
 
     apply_calls: list[Any] = []

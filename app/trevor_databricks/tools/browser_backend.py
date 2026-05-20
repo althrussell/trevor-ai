@@ -16,7 +16,7 @@ endpoint surfaces, plus three backend selectors:
 * ``external_browser`` — Browserbase/Steel/etc. via HTTP; needs
   ``browserbase_api_key`` / ``browserbase_project_id`` secrets.
 
-Setting ``HERMES_DATABRICKS_BROWSER_BACKEND`` to anything other than
+Setting ``TREVOR_DATABRICKS_BROWSER_BACKEND`` to anything other than
 ``disabled`` flips the diagnostic to "configure the missing secrets"
 so the operator gets pointed at the right thing.
 """
@@ -41,7 +41,7 @@ def describe(backend: str = "disabled") -> dict[str, Any]:
             "backend": "disabled",
             "available": False,
             "reason": (
-                "Browser tools are disabled. Set HERMES_DATABRICKS_BROWSER_BACKEND "
+                "Browser tools are disabled. Set TREVOR_DATABRICKS_BROWSER_BACKEND "
                 "to one of 'in_app_playwright', 'databricks_job_browser', or "
                 "'external_browser' to enable them."
             ),
@@ -73,7 +73,7 @@ def describe(backend: str = "disabled") -> dict[str, Any]:
             "reason": (
                 "databricks_job_browser is not wired yet. Configure a "
                 "Databricks Job with playwright installed and set "
-                "HERMES_DATABRICKS_BROWSER_JOB_ID."
+                "TREVOR_DATABRICKS_BROWSER_JOB_ID."
             ),
         }
     if backend == "external_browser":

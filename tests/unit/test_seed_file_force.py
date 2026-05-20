@@ -15,7 +15,7 @@ from pathlib import Path
 
 import pytest
 
-from hermes_databricks.fs.volume_fs import UCVolumeHome
+from trevor_databricks.fs.volume_fs import UCVolumeHome
 
 
 @pytest.fixture
@@ -47,9 +47,7 @@ def seed_file(tmp_path: Path) -> Path:
 
 
 class TestSeedFileForce:
-    def test_writes_when_target_absent(
-        self, home: UCVolumeHome, seed_file: Path
-    ) -> None:
+    def test_writes_when_target_absent(self, home: UCVolumeHome, seed_file: Path) -> None:
         result = home.seed_file_force(seed_file, "soul.md", push=False)
 
         assert result["seeded"] is True
@@ -74,9 +72,7 @@ class TestSeedFileForce:
         assert "SHOW CATALOGS" in landed
         assert "stale soul v1" not in landed
 
-    def test_is_a_no_op_when_content_unchanged(
-        self, home: UCVolumeHome, seed_file: Path
-    ) -> None:
+    def test_is_a_no_op_when_content_unchanged(self, home: UCVolumeHome, seed_file: Path) -> None:
         target = home.local_root / "soul.md"
         target.write_text(seed_file.read_text(encoding="utf-8"), encoding="utf-8")
         before_mtime = target.stat().st_mtime_ns
@@ -89,9 +85,7 @@ class TestSeedFileForce:
         # File on disk untouched — no rewrite churn.
         assert target.stat().st_mtime_ns == before_mtime
 
-    def test_skip_when_seed_file_missing(
-        self, home: UCVolumeHome, tmp_path: Path
-    ) -> None:
+    def test_skip_when_seed_file_missing(self, home: UCVolumeHome, tmp_path: Path) -> None:
         missing = tmp_path / "does-not-exist.md"
         result = home.seed_file_force(missing, "soul.md", push=False)
 
@@ -99,17 +93,13 @@ class TestSeedFileForce:
         assert result["overwritten"] is False
         assert result["skipped_reason"] == "seed_file_missing"
 
-    def test_rejects_absolute_target(
-        self, home: UCVolumeHome, seed_file: Path
-    ) -> None:
+    def test_rejects_absolute_target(self, home: UCVolumeHome, seed_file: Path) -> None:
         result = home.seed_file_force(seed_file, "/etc/passwd", push=False)
 
         assert result["seeded"] is False
         assert result["skipped_reason"].startswith("invalid_target")
 
-    def test_rejects_dotdot_target(
-        self, home: UCVolumeHome, seed_file: Path
-    ) -> None:
+    def test_rejects_dotdot_target(self, home: UCVolumeHome, seed_file: Path) -> None:
         result = home.seed_file_force(seed_file, "../outside", push=False)
 
         assert result["seeded"] is False

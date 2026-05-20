@@ -25,7 +25,7 @@ structured "backend required" diagnostic when invoked.
 | Hermes Toolset | Default in App | Notes |
 |----------------|----------------|-------|
 | `web` | enabled | HTTP search backends; needs API keys for premium providers |
-| `file` | enabled | Routed to `/tmp/hermes_cache` + UC Volume sync |
+| `file` | enabled | Routed to `/tmp/trevor_cache` + UC Volume sync |
 | `memory` | enabled | Plugin path; default in-cache |
 | `skills` | enabled | Uses `HERMES_HOME/skills` mirrored to UC Volume |
 | `session` | enabled | `LakebaseSessionDB.search_messages` |
@@ -35,7 +35,7 @@ structured "backend required" diagnostic when invoked.
 | `terminal` | enabled, restricted | `in_app_subprocess` only by default; cwd + timeout guard |
 | `browser` | disabled | Requires `BROWSER_BACKEND` switch + Chromium |
 | `computer-use` | disabled | macOS-only cua-driver |
-| `mcp` | disabled | Enable `HERMES_DATABRICKS_MCP_ENABLED=true` + config |
+| `mcp` | disabled | Enable `TREVOR_DATABRICKS_MCP_ENABLED=true` + config |
 | `image-gen` | disabled by default | Needs `FAL_KEY` etc. |
 | `video-gen` | disabled by default | Needs API keys |
 | `tts` / `voice` | disabled | No audio devices |
@@ -144,19 +144,19 @@ structured "backend required" diagnostic when invoked.
 
 | Tool | Source | Backend | Status | Risk | Notes |
 |------|--------|---------|--------|------|-------|
-| `databricks_serving_endpoint_status` | `hermes_databricks.tools.databricks_toolset` | `WorkspaceClient().serving_endpoints.get(...)` | works-in-app | low | Read-only |
-| `databricks_volume_read` | same | `WorkspaceClient().files.download(...)` | works-in-app | low | Prefix-restricted via `HERMES_DATABRICKS_VOLUME_READ_PREFIXES` |
+| `databricks_serving_endpoint_status` | `trevor_databricks.tools.databricks_toolset` | `WorkspaceClient().serving_endpoints.get(...)` | works-in-app | low | Read-only |
+| `databricks_volume_read` | same | `WorkspaceClient().files.download(...)` | works-in-app | low | Prefix-restricted via `TREVOR_DATABRICKS_VOLUME_READ_PREFIXES` |
 | `databricks_volume_write_agent_note` | same | `WorkspaceClient().files.upload(...)` | works-in-app | low | Legacy convenience tool — writes under `artifacts/agent-notes/`; **not** gated by `WRITES_ENABLED` |
-| `databricks_volume_write` | same | `WorkspaceClient().files.upload(...)` | works-in-app | medium | Broad UC Volume writer. Requires `HERMES_DATABRICKS_WRITES_ENABLED=true` and path inside `HERMES_DATABRICKS_WRITE_ALLOWED_VOLUMES`. Overwriting existing files requires `HERMES_DATABRICKS_YOLO=true` |
+| `databricks_volume_write` | same | `WorkspaceClient().files.upload(...)` | works-in-app | medium | Broad UC Volume writer. Requires `TREVOR_DATABRICKS_WRITES_ENABLED=true` and path inside `TREVOR_DATABRICKS_WRITE_ALLOWED_VOLUMES`. Overwriting existing files requires `TREVOR_DATABRICKS_YOLO=true` |
 | `databricks_volume_list` | same | `WorkspaceClient().files.list_directory_contents(...)` | works-in-app | low | Read-only listing; allowlist combines read + write prefixes |
 | `databricks_volume_delete` | same | `WorkspaceClient().files.delete(path)` | works-in-app | high | Always destructive — requires BOTH `WRITES_ENABLED=true` AND `YOLO=true`. Logged as `dbx_yolo_call` |
 | `databricks_volume_mkdir` | same | `WorkspaceClient().files.create_directory(path)` | works-in-app | low | Allowlist-gated; requires `WRITES_ENABLED=true` |
 | `databricks_uc_describe_table` | same | `WorkspaceClient().tables.get(full_name)` | works-in-app | low | Allowlist enforced |
 | `databricks_uc_query_readonly` | same | `WorkspaceClient().statement_execution.execute_statement(...)` | works-in-app | medium | SELECT/WITH-only; row limit; allowlist; warehouse id required |
-| `databricks_sql_execute` | same | `WorkspaceClient().statement_execution.execute_statement(...)` | works-in-app | high | Full SQL surface (DDL+DML+SELECT). SELECT bypasses gates; mutating statements require `WRITES_ENABLED=true` AND target inside `HERMES_DATABRICKS_WRITE_ALLOWED_SCHEMAS`; destructive verbs (DROP/TRUNCATE/DELETE-without-WHERE/ALTER-DROP/CREATE-OR-REPLACE/REVOKE/VACUUM/PURGE) additionally require `YOLO=true` |
+| `databricks_sql_execute` | same | `WorkspaceClient().statement_execution.execute_statement(...)` | works-in-app | high | Full SQL surface (DDL+DML+SELECT). SELECT bypasses gates; mutating statements require `WRITES_ENABLED=true` AND target inside `TREVOR_DATABRICKS_WRITE_ALLOWED_SCHEMAS`; destructive verbs (DROP/TRUNCATE/DELETE-without-WHERE/ALTER-DROP/CREATE-OR-REPLACE/REVOKE/VACUUM/PURGE) additionally require `YOLO=true` |
 | `databricks_jobs_list` | same | `WorkspaceClient().jobs.list()` | works-in-app | low | Filtered by SP visibility |
 | `databricks_jobs_run_allowlist` | same | `WorkspaceClient().jobs.run_now(job_id)` | works-in-app | medium | Job id allowlist enforced |
-| `databricks_terminal` | `hermes_databricks.tools.terminal_backend` | `in_app_subprocess` (default), `databricks_job`, `external_sandbox` | works-in-app | medium | Same guardrails as Hermes' `terminal`: cwd under `<HERMES_HOME>/workspace`, default 60s timeout, 600s hard cap, 64KB output cap, command denylist for `rm/dd/mkfs/shutdown/...` |
+| `databricks_terminal` | `trevor_databricks.tools.terminal_backend` | `in_app_subprocess` (default), `databricks_job`, `external_sandbox` | works-in-app | medium | Same guardrails as Hermes' `terminal`: cwd under `<HERMES_HOME>/workspace`, default 60s timeout, 600s hard cap, 64KB output cap, command denylist for `rm/dd/mkfs/shutdown/...` |
 | `databricks_python_exec` | same | `python3 <script>` via `terminal_backend` | works-in-app | medium | Convenience wrapper for skills that build SDK-driven Python scripts. Script lands in `<HERMES_HOME>/workspace/_python_exec/`. **Not** gated — mutations performed inside the script bypass the SQL/volume gates, so prefer the gated primitives when they apply |
 
 The `WRITES_ENABLED` / `YOLO` matrix in one screen:
@@ -181,7 +181,7 @@ The supervisor exposes `/debug/tools` with a JSON shape like:
     "browser":  {"selected": "disabled",          "available": false,
                  "reason": "BROWSER_BACKEND=disabled"},
     "mcp":      {"selected": "disabled",          "available": false,
-                 "reason": "HERMES_DATABRICKS_MCP_ENABLED=false"}
+                 "reason": "TREVOR_DATABRICKS_MCP_ENABLED=false"}
   },
   "databricks_toolset": ["databricks_serving_endpoint_status", "..."]
 }

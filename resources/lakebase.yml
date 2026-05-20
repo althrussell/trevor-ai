@@ -3,7 +3,7 @@
 # On Databricks Free Edition the workspace is typically capped at a
 # single Lakebase instance, and an instance already exists
 # (`trevor-db`). The bundle binds to it externally via the
-# ``HERMES_DATABRICKS_LAKEBASE_INSTANCE`` env var declared in
+# ``TREVOR_DATABRICKS_LAKEBASE_INSTANCE`` env var declared in
 # ``app/app.yaml``; the App SP needs DATABASE_USAGE on the instance.
 #
 # To let the bundle own the Lakebase instance again, uncomment the
@@ -11,6 +11,6 @@
 
 # resources:
 #   database_instances:
-#     hermes_db:
+#     trevor_db:
 #       name: ${var.lakebase_instance}
 #       capacity: CU_1

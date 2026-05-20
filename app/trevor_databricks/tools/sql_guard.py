@@ -108,7 +108,9 @@ _DELETE_WITHOUT_WHERE = re.compile(
 )
 _DELETE_HAS_WHERE = re.compile(r"\bWHERE\b", re.IGNORECASE)
 _UPDATE_HAS_WHERE = re.compile(r"\bWHERE\b", re.IGNORECASE)
-_ALTER_DROP = re.compile(r"^\s*ALTER\s+(TABLE|SCHEMA|CATALOG|VIEW)\b.*\bDROP\b", re.IGNORECASE | re.DOTALL)
+_ALTER_DROP = re.compile(
+    r"^\s*ALTER\s+(TABLE|SCHEMA|CATALOG|VIEW)\b.*\bDROP\b", re.IGNORECASE | re.DOTALL
+)
 
 # Match the first 3-part name in the statement (catalog.schema.table).
 # Best-effort: handles unquoted identifiers and backtick-quoted parts.

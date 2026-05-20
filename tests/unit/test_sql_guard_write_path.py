@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from hermes_databricks.tools.sql_guard import (
+from trevor_databricks.tools.sql_guard import (
     DESTRUCTIVE_VERBS,
     find_destructive_verbs,
     normalise_for_execute,
@@ -57,9 +57,7 @@ class TestFindDestructiveVerbs:
         assert "ALTER_DROP" in flagged
 
     def test_create_or_replace(self) -> None:
-        flagged = find_destructive_verbs(
-            "CREATE OR REPLACE TABLE main.s.t AS SELECT 1"
-        )
+        flagged = find_destructive_verbs("CREATE OR REPLACE TABLE main.s.t AS SELECT 1")
         assert "CREATE_OR_REPLACE" in flagged
 
     def test_empty_input(self) -> None:

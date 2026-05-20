@@ -15,9 +15,9 @@ UC + workspace privileges the App service principal needs.
    `databricks_volume_*`, `databricks_python_exec`,
    `databricks_terminal`, `databricks_uc_*`, `databricks_jobs_*`.
 3. All mutating primitives respect two **global switches**:
-   - `HERMES_DATABRICKS_WRITES_ENABLED` — must be `true` for any
+   - `TREVOR_DATABRICKS_WRITES_ENABLED` — must be `true` for any
      DML / DDL.
-   - `HERMES_DATABRICKS_YOLO` — must also be `true` for destructive
+   - `TREVOR_DATABRICKS_YOLO` — must also be `true` for destructive
      verbs (`DROP`, `TRUNCATE`, `DELETE` without `WHERE`, volume
      delete, force-overwrite, etc.).
 
@@ -30,12 +30,12 @@ reads still work.
 
 | Variable | Default | Effect |
 |---|---|---|
-| `HERMES_DATABRICKS_WRITES_ENABLED` | `false` | Master switch. `false` → every mutating primitive returns `{"error":"...disabled..."}`. `true` → DML + non-destructive DDL allowed on allowlisted targets. |
-| `HERMES_DATABRICKS_YOLO` | `false` | Destructive-op switch. Only consulted when `WRITES_ENABLED=true`. `false` → `DROP`/`TRUNCATE`/`DELETE`-without-`WHERE`/`ALTER DROP`/`CREATE OR REPLACE`/`REVOKE`/`VACUUM`/`PURGE`/volume delete/overwrite-existing rejected. `true` → allowed, logged as `dbx_yolo_call`. |
-| `HERMES_DATABRICKS_WRITE_ALLOWED_SCHEMAS` | `${catalog}.${schema}.*` | CSV of `catalog.schema.table` patterns the SQL-execute path may target. Wildcards: `cat.*`, `cat.sch.*`, `cat.sch.user_*`. |
-| `HERMES_DATABRICKS_WRITE_ALLOWED_VOLUMES` | `/Volumes/${catalog}/${schema}/${hermes_home_volume}`, `/Volumes/${catalog}/${schema}/${artifacts_volume}` | CSV of UC Volume path prefixes the write tools may touch. |
-| `HERMES_DATABRICKS_VOLUME_READ_PREFIXES` | (none) | CSV of read prefixes for `databricks_volume_read` / `databricks_volume_list`. The write allowlist is auto-included. |
-| `HERMES_DATABRICKS_WAREHOUSE_ID` | (deploy-time pin) | SQL warehouse used by both the readonly and execute SQL tools. Required for any SQL. |
+| `TREVOR_DATABRICKS_WRITES_ENABLED` | `false` | Master switch. `false` → every mutating primitive returns `{"error":"...disabled..."}`. `true` → DML + non-destructive DDL allowed on allowlisted targets. |
+| `TREVOR_DATABRICKS_YOLO` | `false` | Destructive-op switch. Only consulted when `WRITES_ENABLED=true`. `false` → `DROP`/`TRUNCATE`/`DELETE`-without-`WHERE`/`ALTER DROP`/`CREATE OR REPLACE`/`REVOKE`/`VACUUM`/`PURGE`/volume delete/overwrite-existing rejected. `true` → allowed, logged as `dbx_yolo_call`. |
+| `TREVOR_DATABRICKS_WRITE_ALLOWED_SCHEMAS` | `${catalog}.${schema}.*` | CSV of `catalog.schema.table` patterns the SQL-execute path may target. Wildcards: `cat.*`, `cat.sch.*`, `cat.sch.user_*`. |
+| `TREVOR_DATABRICKS_WRITE_ALLOWED_VOLUMES` | `/Volumes/${catalog}/${schema}/${trevor_home_volume}`, `/Volumes/${catalog}/${schema}/${artifacts_volume}` | CSV of UC Volume path prefixes the write tools may touch. |
+| `TREVOR_DATABRICKS_VOLUME_READ_PREFIXES` | (none) | CSV of read prefixes for `databricks_volume_read` / `databricks_volume_list`. The write allowlist is auto-included. |
+| `TREVOR_DATABRICKS_WAREHOUSE_ID` | (deploy-time pin) | SQL warehouse used by both the readonly and execute SQL tools. Required for any SQL. |
 
 ## Per-target defaults (from `databricks.yml`)
 
@@ -56,7 +56,7 @@ databricks bundle deploy -t dev --var writes_enabled=true --var yolo=true
 ## YOLO semantics (concrete)
 
 `find_destructive_verbs()` in
-[`app/hermes_databricks/tools/sql_guard.py`](../app/hermes_databricks/tools/sql_guard.py)
+[`app/trevor_databricks/tools/sql_guard.py`](../app/trevor_databricks/tools/sql_guard.py)
 flags a statement as destructive (and therefore YOLO-gated) if any of:
 
 | Trigger | Example |
@@ -91,11 +91,11 @@ every deploy) or by **resource bindings** in
 | UC schema | `CREATE TABLE`, `CREATE VOLUME`, `CREATE FUNCTION`, `CREATE MATERIALIZED VIEW` | `setup_grants` | DDL for skill-driven object creation |
 | UC schema | `READ VOLUME`, `WRITE VOLUME` | `setup_grants` | volume primitives target this schema's volumes |
 | UC catalog | `CREATE SCHEMA` (optional) | `setup_grants` with `enable_create_schema=true` | required for the `databricks-unity-catalog` skill's `CREATE SCHEMA` recipe |
-| Volume (`hermes_home`, `hermes_artifacts`) | `WRITE_VOLUME` | bundle binding in `app.yml` | cache mirror + agent notes |
+| Volume (`trevor_home`, `trevor_artifacts`) | `WRITE_VOLUME` | bundle binding in `app.yml` | cache mirror + agent notes |
 | SQL warehouse | `CAN_USE` on `${var.warehouse_id}` | bundle binding in `app.yml` | both SQL tools route through this warehouse |
 | Serving endpoint | `CAN_QUERY` on `${var.llm_endpoint}` | bundle binding in `app.yml` | the foundation model providing Trevor's brain |
 | Lakebase instance | `CAN_CONNECT_AND_CREATE` on the configured instance | bundle binding in `app.yml` | session DB + `agent_app` skill scratchpad |
-| Lakebase schema (`hermes_session`, `agent_app`) | `USAGE`, `CREATE`, `ALL` on tables/sequences, default-privilege grants | `setup_lakebase` notebook | session writes + skill-driven OLTP demos |
+| Lakebase schema (`trevor_session`, `agent_app`) | `USAGE`, `CREATE`, `ALL` on tables/sequences, default-privilege grants | `setup_lakebase` notebook | session writes + skill-driven OLTP demos |
 | Secrets (Telegram) | `READ` on three keys in the `${var.secrets_scope}` scope | bundle bindings in `app.yml` | outbound Telegram messages |
 
 Privileges **not** issued by the bundle (operator responsibility if a
@@ -185,7 +185,7 @@ narrowest possible chokepoint.
 
 ```bash
 # One-time bundle deploy + privilege setup
-scripts/deploy.sh                           # validate -> deploy -> setup_lakebase -> setup_grants -> hermes_app
+scripts/deploy.sh                           # validate -> deploy -> setup_lakebase -> setup_grants -> trevor_app
 
 # Enable writes for dev or prod
 databricks bundle deploy -t dev --var writes_enabled=true
@@ -203,9 +203,9 @@ git commit -m "Refresh ai-dev-kit skills to v0.1.12"
 
 | Symptom | Cause | Fix |
 |---|---|---|
-| `{"error":"...disabled..."}` from `databricks_sql_execute` or `databricks_volume_write` | `HERMES_DATABRICKS_WRITES_ENABLED=false` on the deployed App | Re-deploy with `--var writes_enabled=true` |
+| `{"error":"...disabled..."}` from `databricks_sql_execute` or `databricks_volume_write` | `TREVOR_DATABRICKS_WRITES_ENABLED=false` on the deployed App | Re-deploy with `--var writes_enabled=true` |
 | `{"error":"...yolo..."}` with `destructive: [...]` | Statement is a DROP/TRUNCATE/etc. but YOLO is off | Re-deploy with `--var yolo=true` if you really want to run it |
-| `{"error":"sql target(s) not in HERMES_DATABRICKS_WRITE_ALLOWED_SCHEMAS"}` | Target table is outside the bundle's catalog/schema | Widen the allowlist via env var, or scope the statement |
+| `{"error":"sql target(s) not in TREVOR_DATABRICKS_WRITE_ALLOWED_SCHEMAS"}` | Target table is outside the bundle's catalog/schema | Widen the allowlist via env var, or scope the statement |
 | `PERMISSION_DENIED` from the SDK | The App SP doesn't actually hold the privilege the gate let through | Run `databricks bundle run setup_grants -t <target>` |
 | Skills missing from `skill_list` | First-boot seed didn't run (e.g. `HERMES_HOME` was prepopulated) | Delete `<HERMES_HOME>/skills/databricks/` and restart the App; the seed runs when the directory is empty |
 

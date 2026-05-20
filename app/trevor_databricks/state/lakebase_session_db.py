@@ -52,10 +52,10 @@ from collections.abc import Iterable
 from pathlib import Path
 from typing import Any
 
-from hermes_databricks.config import Config
-from hermes_databricks.lakebase import Lakebase
+from trevor_databricks.config import Config
+from trevor_databricks.lakebase import Lakebase
 
-log = logging.getLogger("hermes_databricks.state.lakebase_session_db")
+log = logging.getLogger("trevor_databricks.state.lakebase_session_db")
 
 SCHEMA_FILE = Path(__file__).parent / "schema.sql"
 
@@ -173,7 +173,7 @@ class LakebaseSessionDB:
 
     SCHEMA_VERSION = 11  # informational; matches the upstream SQLite schema
 
-    def __init__(self, lakebase: Lakebase, *, schema: str = "hermes_session") -> None:
+    def __init__(self, lakebase: Lakebase, *, schema: str = "trevor_session") -> None:
         self.lakebase = lakebase
         self.schema = schema
         self._schema_applied = False
@@ -196,7 +196,7 @@ class LakebaseSessionDB:
 
         Idempotent and defensive. On Databricks Free Edition the App
         service principal typically does NOT have CREATE on the
-        ``hermes_session`` schema — the ``setup_lakebase`` bundle job
+        ``trevor_session`` schema — the ``setup_lakebase`` bundle job
         owns the DDL and grants the SP only USAGE + DML privileges.
         We therefore swallow ``permission denied`` on every CREATE
         statement here and verify connectivity by SELECTing 1.
@@ -204,7 +204,7 @@ class LakebaseSessionDB:
         if self._schema_applied:
             return
         sql_text = SCHEMA_FILE.read_text()
-        sql_text = sql_text.replace("hermes_session", self.schema)
+        sql_text = sql_text.replace("trevor_session", self.schema)
         statements = [
             s.strip() for s in sql_text.split(";") if s.strip() and not s.strip().startswith("--")
         ]

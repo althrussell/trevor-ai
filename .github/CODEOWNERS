@@ -10,12 +10,12 @@
 /resources/                             @althrussell
 /app/app.yaml                           @althrussell
 
-# Hermes <-> Databricks compatibility layers.
-/app/hermes_databricks/                 @althrussell
-/app/hermes_databricks/databricks_provider.py  @althrussell
-/app/hermes_databricks/state/           @althrussell
-/app/hermes_databricks/fs/              @althrussell
-/app/hermes_databricks/tools/           @althrussell
+# Trevor's Databricks compatibility layers.
+/app/trevor_databricks/                 @althrussell
+/app/trevor_databricks/databricks_provider.py  @althrussell
+/app/trevor_databricks/state/           @althrussell
+/app/trevor_databricks/fs/              @althrussell
+/app/trevor_databricks/tools/           @althrussell
 
 # Lakebase setup notebook — Free Edition SP-role workaround lives here.
 /sql/                                   @althrussell

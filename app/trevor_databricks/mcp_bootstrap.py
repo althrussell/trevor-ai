@@ -34,9 +34,9 @@ import logging
 from pathlib import Path
 from typing import Any
 
-from hermes_databricks.config import Config
+from trevor_databricks.config import Config
 
-log = logging.getLogger("hermes_databricks.mcp_bootstrap")
+log = logging.getLogger("trevor_databricks.mcp_bootstrap")
 
 
 DATABRICKS_SQL_MCP_SERVER_NAME = "databricks-sql"
@@ -74,7 +74,7 @@ def _workspace_host() -> str | None:
 
 
 def _config_path(cfg: Config) -> Path:
-    return cfg.hermes_home / "config.yaml"
+    return cfg.trevor_home / "config.yaml"
 
 
 def _load_existing(path: Path) -> dict[str, Any]:
@@ -133,7 +133,7 @@ def refresh_mcp_config(cfg: Config) -> dict[str, Any]:
         "applied": False,
     }
     if not cfg.mcp_enabled:
-        status["reason"] = "HERMES_DATABRICKS_MCP_ENABLED=false"
+        status["reason"] = "TREVOR_DATABRICKS_MCP_ENABLED=false"
         return status
 
     host = _workspace_host()

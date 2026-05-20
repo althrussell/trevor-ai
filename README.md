@@ -14,7 +14,7 @@
 > cron scheduler — inside a Databricks App on Databricks Free Edition,
 > talking to a Databricks-hosted open-source model.**
 
-This is *not* a stripped-down "Hermes-on-Databricks demo". The Hermes
+This is *not* a stripped-down "Trevor-on-Databricks demo". The Hermes
 runtime is imported unmodified from PyPI (`hermes-agent==0.14.0`) and
 wired to Databricks-native compatibility layers underneath:
 
@@ -147,9 +147,9 @@ The whole thing fits on the Free tier:
 
 | Resource | Free-tier footprint |
 |---|---|
-| 1 Databricks App (`hermes-agent`) | included |
+| 1 Databricks App (`trevor-agent`) | included |
 | 1 Lakebase instance (`CU_1`, ~$0/month idle) | included |
-| 2 UC Volumes (`hermes_home`, `hermes_artifacts`) | included |
+| 2 UC Volumes (`trevor_home`, `trevor_artifacts`) | included |
 | 1 Serverless SQL Warehouse (used by the read-only query tool) | scale-to-zero |
 | Foundation Model API quota | included |
 
@@ -198,11 +198,11 @@ is that we get to keep them.
                │
                ▼
 ┌─────────────────────────────────────────────────────────────────────┐
-│  Databricks App: hermes-agent     ← workspace OAuth gate            │
+│  Databricks App: trevor-agent     ← workspace OAuth gate            │
 │  FastAPI / uvicorn / asyncio                                        │
 │                                                                     │
-│  HermesSupervisor                                                   │
-│   ├── HermesRuntime                                                 │
+│  TrevorSupervisor                                                   │
+│   ├── TrevorRuntime                                                 │
 │   │    ├── AIAgent (real Hermes 0.14.0)                             │
 │   │    │    ├── tool_registry  →  databricks, terminal, web, file,  │
 │   │    │    │                     memory, skills, cron, …           │
@@ -219,8 +219,8 @@ is that we get to keep them.
 │   │    │      tool_results, memory_events, usage_ledger,            │
 │   │    │      agent_events, cron_jobs, kv_state                     │
 │   │    └── UCVolumeHome                                             │
-│   │         → /Volumes/<catalog>/<schema>/hermes_home               │
-│   │           (mirrored against /tmp/hermes_cache/hermes_home)      │
+│   │         → /Volumes/<catalog>/<schema>/trevor_home               │
+│   │           (mirrored against /tmp/trevor_cache/trevor_home)      │
 │   ├── TelegramClient (httpx async long-poll, allowlist)             │
 │   ├── Heartbeat task   ──▶ UC Volume sync + bearer-token refresh    │
 │   └── Cron tick task   ──▶ Hermes scheduler.tick()                  │
@@ -248,7 +248,7 @@ In-depth: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md),
 ├── databricks.yml                     ← Asset Bundle entrypoint
 ├── resources/
 │   ├── schema.yml                       UC schema
-│   ├── volumes.yml                      hermes_home + artifacts volumes
+│   ├── volumes.yml                      trevor_home + artifacts volumes
 │   ├── lakebase.yml                     Postgres instance (optional / shared)
 │   ├── setup_job.yml                    one-shot DDL + GRANTs
 │   ├── app.yml                          App + resource bindings (volumes, endpoint, secrets)
@@ -258,7 +258,7 @@ In-depth: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md),
 │   ├── app.py                           FastAPI lifespan + endpoints
 │   ├── app.yaml                         App runtime: uvicorn + env vars
 │   ├── requirements.txt                 hermes-agent + databricks-sdk + …
-│   └── hermes_databricks/
+│   └── trevor_databricks/
 │       ├── config.py                    env → typed Config
 │       ├── runtime.py                   embeds Hermes AIAgent
 │       ├── supervisor.py                async lifecycle
@@ -321,22 +321,22 @@ TL;DR:
 
 ```bash
 # 1. auth
-databricks auth login --host <workspace-url> --profile hermes-free
+databricks auth login --host <workspace-url> --profile trevor-free
 
 # 2. deploy
-databricks bundle deploy -t free --profile hermes-free
+databricks bundle deploy -t free --profile trevor-free
 
 # 3. seed Lakebase schema + grants
-databricks bundle run setup_lakebase -t free --profile hermes-free
+databricks bundle run setup_lakebase -t free --profile trevor-free
 
 # 4. put Telegram secrets
-databricks --profile hermes-free secrets create-scope hermes_agent
-databricks --profile hermes-free secrets put-secret hermes_agent telegram_bot_token            --string-value '<BotFather token>'
-databricks --profile hermes-free secrets put-secret hermes_agent telegram_primary_user_handle  --string-value '<your_handle>'
-databricks --profile hermes-free secrets put-secret hermes_agent telegram_allowed_users        --string-value '<your_handle>'
+databricks --profile trevor-free secrets create-scope trevor_agent
+databricks --profile trevor-free secrets put-secret trevor_agent telegram_bot_token            --string-value '<BotFather token>'
+databricks --profile trevor-free secrets put-secret trevor_agent telegram_primary_user_handle  --string-value '<your_handle>'
+databricks --profile trevor-free secrets put-secret trevor_agent telegram_allowed_users        --string-value '<your_handle>'
 
 # 5. start the App
-databricks bundle run hermes_app -t free --profile hermes-free
+databricks bundle run trevor_app -t free --profile trevor-free
 ```
 
 Then DM your bot from Telegram.
@@ -352,14 +352,14 @@ Override at deploy time with `--var key=value`:
 | Variable | Default | Purpose |
 |---|---|---|
 | `catalog` | `workspace` | UC catalog that owns the schema/volumes |
-| `schema` | `hermes_agent` | UC schema |
-| `app_name` | `hermes-agent` | App slug |
+| `schema` | `trevor_agent` | UC schema |
+| `app_name` | `trevor-agent` | App slug |
 | `agent_name` | `Hermes` | Display name |
 | `llm_endpoint` | `databricks-gpt-oss-120b` | Foundation Model endpoint |
-| `secrets_scope` | `hermes_agent` | Secrets scope |
-| `lakebase_instance` | `hermes-db` | Lakebase Postgres instance |
-| `hermes_home_volume` | `hermes_home` | UC volume for `HERMES_HOME` |
-| `artifacts_volume` | `hermes_artifacts` | UC volume for agent outputs |
+| `secrets_scope` | `trevor_agent` | Secrets scope |
+| `lakebase_instance` | `trevor-db` | Lakebase Postgres instance |
+| `trevor_home_volume` | `trevor_home` | UC volume for `HERMES_HOME` |
+| `artifacts_volume` | `trevor_artifacts` | UC volume for agent outputs |
 | `warehouse_id` | `""` | SQL warehouse for `databricks_uc_query_readonly` |
 | `daily_token_cap` | `100000` / `1000000` | Soft cap |
 | `heartbeat_seconds` | `180` | Supervisor heartbeat cadence |
@@ -370,7 +370,7 @@ Override at deploy time with `--var key=value`:
 
 ### App env vars (`app/app.yaml`)
 
-All begin with `HERMES_DATABRICKS_` and derive from the bundle variables. Edit
+All begin with `TREVOR_DATABRICKS_` and derive from the bundle variables. Edit
 `app/app.yaml` directly to flip a flag without re-running the bundle.
 
 ### Secrets (`databricks secrets put-secret`)
@@ -384,7 +384,7 @@ All begin with `HERMES_DATABRICKS_` and derive from the bundle variables. Edit
 | `exa_api_key` / `firecrawl_api_key` / `tavily_api_key` | optional | Hermes web search |
 | `slack_bot_token` | optional | future Slack channel |
 
-`hermes_databricks.observability.logging.RedactingFormatter` strips bearer
+`trevor_databricks.observability.logging.RedactingFormatter` strips bearer
 tokens, Telegram bot tokens, Postgres URIs, and `api_key=…` query-string
 fragments from every log line.
 
@@ -425,8 +425,8 @@ All endpoints sit behind the App's workspace-OAuth gate.
 | `core` / `file` / `web` / `memory` / `skills` / `session` / `cron` / `planner` / `delegation` | enabled | Pure Python; file ops via `UCVolumeHome` |
 | `databricks` (this repo) | enabled | `WorkspaceClient`, allowlist-gated |
 | `terminal` | enabled (`in_app_subprocess`) | cwd under `<HERMES_HOME>/workspace`, 60s default timeout |
-| `browser` | disabled | Configure `HERMES_DATABRICKS_BROWSER_BACKEND` to enable |
-| `mcp` | disabled | `HERMES_DATABRICKS_MCP_ENABLED=true` + `mcp_servers:` in `HERMES_HOME/config.yaml` |
+| `browser` | disabled | Configure `TREVOR_DATABRICKS_BROWSER_BACKEND` to enable |
+| `mcp` | disabled | `TREVOR_DATABRICKS_MCP_ENABLED=true` + `mcp_servers:` in `HERMES_HOME/config.yaml` |
 | `voice` / `computer-use` / `homeassistant` | disabled | No audio / macOS / external network |
 | `messaging` (Telegram) | enabled | Outbound poll |
 
@@ -440,7 +440,7 @@ tool stays registered and returns a `BackendUnavailable` diagnostic.
 | Tool | Guardrails |
 |---|---|
 | `databricks_serving_endpoint_status` | Read-only |
-| `databricks_uc_describe_table` | `HERMES_DATABRICKS_QUERY_ALLOWED_TABLES` allowlist |
+| `databricks_uc_describe_table` | `TREVOR_DATABRICKS_QUERY_ALLOWED_TABLES` allowlist |
 | `databricks_uc_query_readonly` | `SELECT`/`WITH` only; no stacked queries; `row_limit ≤ 5000`; `warehouse_id` required |
 | `databricks_sql_execute` | Full SQL surface; SELECT bypasses gates; mutations require `WRITES_ENABLED=true` + target in `WRITE_ALLOWED_SCHEMAS`; destructive verbs need `YOLO=true` |
 | `databricks_volume_read` | Prefix gate + byte cap |
@@ -450,7 +450,7 @@ tool stays registered and returns a `BackendUnavailable` diagnostic.
 | `databricks_volume_mkdir` | Allowlist-gated; requires `WRITES_ENABLED=true` |
 | `databricks_volume_delete` | Always destructive — requires `WRITES_ENABLED=true` AND `YOLO=true` |
 | `databricks_jobs_list` | Filtered by App SP visibility |
-| `databricks_jobs_run_allowlist` | `HERMES_DATABRICKS_JOB_ID_ALLOWLIST` allowlist |
+| `databricks_jobs_run_allowlist` | `TREVOR_DATABRICKS_JOB_ID_ALLOWLIST` allowlist |
 | `databricks_terminal` | Shares the `terminal_backend`; cwd under `<HERMES_HOME>/workspace`; 60s default timeout |
 | `databricks_python_exec` | Python wrapper over `terminal_backend`; script lands in `<HERMES_HOME>/workspace/_python_exec/`; **not** gated — mutations bypass SQL/volume gates, prefer the gated primitives when they apply |
 
@@ -458,8 +458,8 @@ The two master switches that drive every gate above:
 
 | Env var | Default | Meaning |
 |---|---|---|
-| `HERMES_DATABRICKS_WRITES_ENABLED` | `false` | Master switch for every mutating primitive |
-| `HERMES_DATABRICKS_YOLO` | `false` | When writes are on, additionally allow destructive verbs (`DROP`, `TRUNCATE`, `DELETE` without `WHERE`, volume delete, force-overwrite) |
+| `TREVOR_DATABRICKS_WRITES_ENABLED` | `false` | Master switch for every mutating primitive |
+| `TREVOR_DATABRICKS_YOLO` | `false` | When writes are on, additionally allow destructive verbs (`DROP`, `TRUNCATE`, `DELETE` without `WHERE`, volume delete, force-overwrite) |
 
 Per-target defaults live in [`databricks.yml`](databricks.yml) — `free`
 keeps both off (least privilege on the shared Free workspace), `dev`
@@ -505,7 +505,7 @@ and PR.
 | Browser tools off by default | No Chromium in the App base image — configure an external backend |
 | `computer-use` blocked | macOS-only `cua-driver` |
 | `pg_trgm` index optional | Free Edition Lakebase has no `pg_trgm` extension; the trgm GIN index is best-effort |
-| `/Volumes` not POSIX-mounted | All UC Volume I/O goes through the SDK Files API; Hermes paths are mirrored to `/tmp/hermes_cache/hermes_home` |
+| `/Volumes` not POSIX-mounted | All UC Volume I/O goes through the SDK Files API; Hermes paths are mirrored to `/tmp/trevor_cache/trevor_home` |
 | Local SQLite WAL ignored | Lakebase is the source of truth for sessions/messages |
 | Lakebase credentials expire | Refreshed every ≤50 minutes with auto-reconnect on `OperationalError` |
 | Databricks proxy rejects OpenAI extras | `databricks_provider._sanitise_oai_kwargs` strips `stream_options` and integer-schema constraints |
@@ -534,13 +534,13 @@ and PR.
 |---|---|
 | Use a different Databricks model | `--var llm_endpoint=…` on `databricks bundle deploy` |
 | Add a custom Hermes tool | Drop a file under `vendor/hermes-agent/tools/`; call `registry.register(...)` at module top-level |
-| Add a Databricks-native tool | Edit `app/hermes_databricks/tools/databricks_toolset.py`; add a `_ToolSpec` |
-| Allowlist a new UC table | Add to `HERMES_DATABRICKS_QUERY_ALLOWED_TABLES` in `app/app.yaml` |
-| Allow Trevor to write to a new schema | Add a `catalog.schema.*` pattern to `HERMES_DATABRICKS_WRITE_ALLOWED_SCHEMAS`, redeploy with `--var writes_enabled=true`, run `databricks bundle run setup_grants` |
-| Allow Trevor to write to a new UC Volume | Add the `/Volumes/...` prefix to `HERMES_DATABRICKS_WRITE_ALLOWED_VOLUMES`; ensure the App SP has `WRITE_VOLUME` on it |
+| Add a Databricks-native tool | Edit `app/trevor_databricks/tools/databricks_toolset.py`; add a `_ToolSpec` |
+| Allowlist a new UC table | Add to `TREVOR_DATABRICKS_QUERY_ALLOWED_TABLES` in `app/app.yaml` |
+| Allow Trevor to write to a new schema | Add a `catalog.schema.*` pattern to `TREVOR_DATABRICKS_WRITE_ALLOWED_SCHEMAS`, redeploy with `--var writes_enabled=true`, run `databricks bundle run setup_grants` |
+| Allow Trevor to write to a new UC Volume | Add the `/Volumes/...` prefix to `TREVOR_DATABRICKS_WRITE_ALLOWED_VOLUMES`; ensure the App SP has `WRITE_VOLUME` on it |
 | Let Trevor `DROP` / `TRUNCATE` etc. | Redeploy with `--var yolo=true` (each call is logged as `dbx_yolo_call`) |
 | Add a new ai-dev-kit skill / bump the pin | `scripts/sync_databricks_skills.sh --tag <new>` then commit |
-| Enable an external browser | Add the relevant API key to secrets and set `HERMES_DATABRICKS_BROWSER_BACKEND=external_browser` |
+| Enable an external browser | Add the relevant API key to secrets and set `TREVOR_DATABRICKS_BROWSER_BACKEND=external_browser` |
 | Add a new chat channel | Mirror `telegram_polling.py` (outbound poll + allowlist + dispatch via `runtime.run_turn`); register `health_probe` with the supervisor |
 | Persist a new event kind | Call `supervisor._record_event(kind, payload)` — `/debug/events?kind=` will pick it up |
 
@@ -567,7 +567,7 @@ Key invariants worth knowing:
   via resource bindings and never persisted to local disk.
 * The Lakebase App SP role is created via the
   `/api/2.0/database/instances/{name}/roles` API and granted
-  least-privilege (`USAGE` + DML on `hermes_session`).
+  least-privilege (`USAGE` + DML on `trevor_session`).
 * All UC Volume I/O is bounded under `HERMES_HOME` with explicit
   guards against absolute paths and `..` escapes.
 * The terminal sandbox restricts cwd to `<HERMES_HOME>/workspace`

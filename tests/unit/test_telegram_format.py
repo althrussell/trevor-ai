@@ -8,7 +8,7 @@ plain-text fallback must drop the markdown markers cleanly.
 
 from __future__ import annotations
 
-from hermes_databricks.telegram_format import md_to_telegram_html, strip_markdown
+from trevor_databricks.telegram_format import md_to_telegram_html, strip_markdown
 
 
 def test_empty_string_round_trips():

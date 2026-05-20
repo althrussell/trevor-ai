@@ -1,6 +1,6 @@
 """Terminal tool backends.
 
-Three modes, selectable via ``HERMES_DATABRICKS_TERMINAL_BACKEND``:
+Three modes, selectable via ``TREVOR_DATABRICKS_TERMINAL_BACKEND``:
 
 * ``in_app_subprocess`` (default) — runs the command via Python's
   ``subprocess.run`` inside the Databricks App container. The working
@@ -28,7 +28,7 @@ import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 
-log = logging.getLogger("hermes_databricks.tools.terminal_backend")
+log = logging.getLogger("trevor_databricks.tools.terminal_backend")
 
 
 # Hard limits — Hermes' terminal tool can specify smaller bounds but
@@ -87,8 +87,8 @@ class TerminalResult:
         }
 
 
-def workspace_dir(hermes_home: Path) -> Path:
-    ws = Path(hermes_home) / "workspace"
+def workspace_dir(trevor_home: Path) -> Path:
+    ws = Path(trevor_home) / "workspace"
     ws.mkdir(parents=True, exist_ok=True)
     return ws.resolve()
 
@@ -110,7 +110,7 @@ def run(
     cmd: list[str],
     *,
     backend: str = "in_app_subprocess",
-    hermes_home: Path | None = None,
+    trevor_home: Path | None = None,
     cwd: str | None = None,
     timeout: float = DEFAULT_TIMEOUT_SECONDS,
     env: dict | None = None,
@@ -130,11 +130,11 @@ def run(
             exit_code=None,
             stdout="",
             stderr="",
-            note="terminal backend is disabled (HERMES_DATABRICKS_TERMINAL_BACKEND=disabled)",
+            note="terminal backend is disabled (TREVOR_DATABRICKS_TERMINAL_BACKEND=disabled)",
         )
 
     if backend == "in_app_subprocess":
-        return _run_in_app(cmd, hermes_home=hermes_home, cwd=cwd, timeout=timeout, env=env)
+        return _run_in_app(cmd, trevor_home=trevor_home, cwd=cwd, timeout=timeout, env=env)
 
     if backend == "databricks_job":
         return TerminalResult(
@@ -163,7 +163,7 @@ def run(
             stderr="",
             note=(
                 "external_sandbox backend requires explicit configuration "
-                "(MODAL_TOKEN_*, DAYTONA_*, VERCEL_*). Set HERMES_DATABRICKS_"
+                "(MODAL_TOKEN_*, DAYTONA_*, VERCEL_*). Set TREVOR_DATABRICKS_"
                 "TERMINAL_BACKEND back to in_app_subprocess or finish wiring."
             ),
         )
@@ -174,13 +174,13 @@ def run(
 def _run_in_app(
     cmd: list[str],
     *,
-    hermes_home: Path | None,
+    trevor_home: Path | None,
     cwd: str | None,
     timeout: float,
     env: dict | None,
 ) -> TerminalResult:
     home = Path(
-        hermes_home or os.environ.get("HERMES_HOME") or "/tmp/hermes_cache/hermes_home"
+        trevor_home or os.environ.get("HERMES_HOME") or "/tmp/trevor_cache/trevor_home"
     ).resolve()
     workspace = workspace_dir(home)
     try:

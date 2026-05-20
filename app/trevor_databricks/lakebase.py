@@ -32,9 +32,9 @@ import uuid
 from collections.abc import Iterator
 from typing import Any
 
-from hermes_databricks.config import Config
+from trevor_databricks.config import Config
 
-log = logging.getLogger("hermes_databricks.lakebase")
+log = logging.getLogger("trevor_databricks.lakebase")
 
 
 CREDENTIAL_TTL_SECONDS = 50 * 60  # rotate before the 1-hour Lakebase token expiry

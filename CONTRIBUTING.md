@@ -16,10 +16,10 @@ By participating you agree to abide by our
   `databricks bundle validate -t free` output and the relevant
   `/debug/*` payload.
 * **New tools.** Add a `_ToolSpec` to
-  `app/hermes_databricks/tools/databricks_toolset.py` plus a unit test
+  `app/trevor_databricks/tools/databricks_toolset.py` plus a unit test
   under `tests/unit/`. Tools should be allowlist-gated and never
   silently elevated.
-* **New channels.** Mirror `app/hermes_databricks/telegram_polling.py`
+* **New channels.** Mirror `app/trevor_databricks/telegram_polling.py`
   (outbound poll + allowlist + dispatch via `runtime.run_turn`).
 * **Docs.** Anything that wasn't obvious when you onboarded.
 
@@ -88,7 +88,7 @@ statement.
 | Linting | `ruff check .` |
 | Formatting | `ruff format .` (Black-compatible) |
 | Type hints | Encouraged on new code; not enforced |
-| Docstrings | Required on public functions in `hermes_databricks/` |
+| Docstrings | Required on public functions in `trevor_databricks/` |
 | Comments | Explain *why*, not *what*. The CI grumbles about narrative comments |
 | Logging | Use the module-level `log = logging.getLogger(__name__)` — never `print` from runtime code |
 | Secrets | Never log a raw token; the redacting formatter is a safety net, not an excuse |
@@ -244,7 +244,7 @@ These are non-negotiable; PRs that violate them will be asked to
 restructure.
 
 1. **Never vendor or modify `hermes-agent` core.** Compatibility goes
-   in `app/hermes_databricks/`. If Hermes needs a hook, file an
+   in `app/trevor_databricks/`. If Hermes needs a hook, file an
    upstream issue first.
 2. **Tools are never silently disabled.** If a backend is missing,
    the tool stays registered and returns a `BackendUnavailable`

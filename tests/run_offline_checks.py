@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Stdlib-only smoke check that exercises the critical pure-Python
-modules of hermes-on-databricks without requiring pytest or any
+modules of trevor-on-databricks without requiring pytest or any
 network-dependent SDK call.
 
 Run from the repo root:
@@ -50,7 +50,7 @@ def main() -> int:
     # SQL guard
     # ------------------------------------------------------------------
     with section("sql_guard"):
-        from hermes_databricks.tools.sql_guard import validate_readonly
+        from trevor_databricks.tools.sql_guard import validate_readonly
 
         assert_(validate_readonly("SELECT 1").ok, "SELECT 1 allowed")
         assert_(
@@ -66,35 +66,35 @@ def main() -> int:
     # Terminal backend
     # ------------------------------------------------------------------
     with section("terminal_backend"):
-        from hermes_databricks.tools import terminal_backend as tb
+        from trevor_databricks.tools import terminal_backend as tb
 
         with tempfile.TemporaryDirectory() as d:
-            r = tb.run([sys.executable, "-c", "print('hi-from-terminal')"], hermes_home=d)
+            r = tb.run([sys.executable, "-c", "print('hi-from-terminal')"], trevor_home=d)
             assert_(r.ok and "hi-from-terminal" in r.stdout, "subprocess runs and captures stdout")
 
-            r = tb.run([sys.executable, "-c", "import os; print(os.getcwd())"], hermes_home=d)
+            r = tb.run([sys.executable, "-c", "import os; print(os.getcwd())"], trevor_home=d)
             assert_(
                 r.ok and r.stdout.strip().endswith("workspace"), "cwd defaults to <home>/workspace"
             )
 
-            r = tb.run([sys.executable, "-c", "print(1)"], hermes_home=d, cwd="../escape")
+            r = tb.run([sys.executable, "-c", "print(1)"], trevor_home=d, cwd="../escape")
             assert_((not r.ok) and "escapes workspace" in r.note, "cwd escape rejected")
 
-            r = tb.run(["rm", "-rf", "/"], hermes_home=d)
+            r = tb.run(["rm", "-rf", "/"], trevor_home=d)
             assert_((not r.ok) and "denylist" in r.note, "rm in denylist")
 
-            r = tb.run(["totally-not-a-real-binary-xyz"], hermes_home=d)
+            r = tb.run(["totally-not-a-real-binary-xyz"], trevor_home=d)
             assert_((not r.ok) and "not found on PATH" in r.note, "unknown binary diagnostic")
 
             r = tb.run(
-                [sys.executable, "-c", "import time; time.sleep(5)"], hermes_home=d, timeout=1
+                [sys.executable, "-c", "import time; time.sleep(5)"], trevor_home=d, timeout=1
             )
             assert_((not r.ok) and "timeout" in r.note.lower(), "timeout enforced")
 
-            r = tb.run([sys.executable, "-c", "print(1)"], backend="disabled", hermes_home=d)
+            r = tb.run([sys.executable, "-c", "print(1)"], backend="disabled", trevor_home=d)
             assert_(not r.ok and "disabled" in r.note, "disabled backend returns diagnostic")
 
-            r = tb.run([sys.executable, "-c", "print(1)"], backend="databricks_job", hermes_home=d)
+            r = tb.run([sys.executable, "-c", "print(1)"], backend="databricks_job", trevor_home=d)
             assert_(
                 not r.ok and "databricks_job" in r.note, "databricks_job backend returns diagnostic"
             )
@@ -103,7 +103,7 @@ def main() -> int:
     # Databricks toolset guards
     # ------------------------------------------------------------------
     with section("databricks_toolset"):
-        from hermes_databricks.tools import databricks_toolset as dts
+        from trevor_databricks.tools import databricks_toolset as dts
 
         names = set(dts.tool_names())
         expected = {
@@ -132,7 +132,7 @@ def main() -> int:
 
         payload = json.loads(dts._h_uc_query_readonly({"sql": "SELECT 1"}))
         assert_(
-            "error" in payload and "HERMES_DATABRICKS_WAREHOUSE_ID" in payload["error"],
+            "error" in payload and "TREVOR_DATABRICKS_WAREHOUSE_ID" in payload["error"],
             "warehouse_id required",
         )
 
@@ -164,10 +164,10 @@ def main() -> int:
     # UCVolumeHome path guards (no SDK)
     # ------------------------------------------------------------------
     with section("volume_fs"):
-        from hermes_databricks.fs.volume_fs import UCVolumeHome
+        from trevor_databricks.fs.volume_fs import UCVolumeHome
 
         with tempfile.TemporaryDirectory() as d:
-            home = UCVolumeHome(local_root=Path(d), volume_root="/Volumes/main/agents/hermes_home")
+            home = UCVolumeHome(local_root=Path(d), volume_root="/Volumes/main/agents/trevor_home")
             try:
                 home._resolve_local("/etc/passwd")
                 assert_(False, "absolute path should raise")
@@ -192,7 +192,7 @@ def main() -> int:
     # Logging redaction
     # ------------------------------------------------------------------
     with section("logging_redaction"):
-        from hermes_databricks.observability.logging import RedactingFormatter, redact
+        from trevor_databricks.observability.logging import RedactingFormatter, redact
 
         fmt = RedactingFormatter()
         rec = logging.LogRecord(
@@ -215,8 +215,8 @@ def main() -> int:
     # Backend registry / browser / mcp diagnostics
     # ------------------------------------------------------------------
     with section("backend_registry"):
-        from hermes_databricks.config import Config
-        from hermes_databricks.tools.backend_registry import (
+        from trevor_databricks.config import Config
+        from trevor_databricks.tools.backend_registry import (
             build_toolset_selection,
             describe_backends,
         )
@@ -241,7 +241,7 @@ def main() -> int:
     # Telegram markdown → HTML rendering (stdlib only)
     # ------------------------------------------------------------------
     with section("telegram_format"):
-        from hermes_databricks.telegram_format import (
+        from trevor_databricks.telegram_format import (
             md_to_telegram_html,
             strip_markdown,
         )
@@ -307,7 +307,7 @@ def main() -> int:
         except ImportError:
             print("  SKIP  httpx not installed in this venv")
             return _summarise()
-        from hermes_databricks import telegram_polling as tp
+        from trevor_databricks import telegram_polling as tp
 
         c = tp.TelegramClient(token="t", primary_user_handle="@Alice", allowed_usernames=["@Bob"])
         assert_(c._is_allowed("alice"), "primary user (alice) allowed")

@@ -1,6 +1,6 @@
 # NOTICE
 
-Hermes on Databricks — third-party attributions and notices.
+Trevor on Databricks — third-party attributions and notices.
 
 This project is distributed under the [MIT License](LICENSE). The
 attributions below cover (a) upstream open-source projects this
@@ -99,7 +99,7 @@ credited here so contributors can read them in context.
   `run_conversation` loop, cron scheduler, and `SessionDB` interface
   are imported unmodified. This project **does not vendor or
   modify** Hermes core; all integration code lives in
-  `app/hermes_databricks/`.
+  `app/trevor_databricks/`.
 
 ### Living-AI
 

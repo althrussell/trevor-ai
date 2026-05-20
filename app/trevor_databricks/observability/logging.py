@@ -1,4 +1,4 @@
-"""Structured JSON logging and secret redaction for the Hermes-on-Databricks runtime.
+"""Structured JSON logging and secret redaction for the Trevor-on-Databricks runtime.
 
 Goals:
 
@@ -94,7 +94,7 @@ def configure_logging(cfg) -> None:
 
     for logger_name in (
         "",  # root
-        "hermes_databricks",
+        "trevor_databricks",
         "hermes",
         "agent",
         "gateway",

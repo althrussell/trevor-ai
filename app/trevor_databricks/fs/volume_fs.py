@@ -5,12 +5,12 @@ I/O has to go through the Databricks SDK Files API. To preserve
 Hermes' assumption that ``HERMES_HOME`` is a regular directory, we run
 a two-layer model:
 
-* The **local cache** lives under ``cfg.hermes_home`` (default
-  ``/tmp/hermes_cache/hermes_home``). Hermes reads and writes here
+* The **local cache** lives under ``cfg.trevor_home`` (default
+  ``/tmp/trevor_cache/trevor_home``). Hermes reads and writes here
   normally — the cache is a real on-disk directory tree.
 
 * The **durable mirror** lives at
-  ``/Volumes/{catalog}/{schema}/{hermes_home_volume}``. The runtime
+  ``/Volumes/{catalog}/{schema}/{trevor_home_volume}``. The runtime
   performs:
     * ``sync_from_volume()`` on boot to hydrate the cache.
     * ``sync_to_volume()`` periodically (driven by the supervisor's
@@ -41,9 +41,9 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from hermes_databricks.config import Config
+from trevor_databricks.config import Config
 
-log = logging.getLogger("hermes_databricks.fs.volume_fs")
+log = logging.getLogger("trevor_databricks.fs.volume_fs")
 
 
 # Subpaths whose contents the supervisor will upload after a write
@@ -141,8 +141,8 @@ class UCVolumeHome:
     @classmethod
     def from_config(cls, cfg: Config, *, workspace_factory=None) -> UCVolumeHome:
         return cls(
-            local_root=cfg.hermes_home,
-            volume_root=cfg.hermes_home_volume_path,
+            local_root=cfg.trevor_home,
+            volume_root=cfg.trevor_home_volume_path,
             workspace_factory=workspace_factory,
         )
 
@@ -530,9 +530,7 @@ class UCVolumeHome:
                     push_result = self.touch_subpath(target_subpath)
                     result["pushed"] = push_result
                 except Exception:
-                    log.exception(
-                        "seed_file_force: push to volume failed for %s", target_subpath
-                    )
+                    log.exception("seed_file_force: push to volume failed for %s", target_subpath)
                     result["pushed"] = {"ok": False, "reason": "push_failed"}
 
         return result

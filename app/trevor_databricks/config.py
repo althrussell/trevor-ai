@@ -1,4 +1,4 @@
-"""Environment-driven configuration for the Hermes-on-Databricks runtime.
+"""Environment-driven configuration for the Trevor-on-Databricks runtime.
 
 Resolution rules:
 
@@ -7,7 +7,7 @@ Resolution rules:
 * Secrets (Telegram token, optional provider keys) are read lazily
   from Databricks Secrets via ``WorkspaceClient().secrets.get_secret``
   the first time they are needed; values are base64-decoded.
-* All env var names share the ``HERMES_DATABRICKS_`` prefix so they
+* All env var names share the ``TREVOR_DATABRICKS_`` prefix so they
   don't clash with Hermes' own ``HERMES_*`` configuration surface.
 """
 
@@ -58,16 +58,16 @@ class Config:
 
     # Databricks
     catalog: str = "workspace"
-    schema: str = "hermes_agent"
-    hermes_home_volume: str = "hermes_home"
-    artifacts_volume: str = "hermes_artifacts"
-    secrets_scope: str = "hermes_agent"
+    schema: str = "trevor_agent"
+    trevor_home_volume: str = "trevor_home"
+    artifacts_volume: str = "trevor_artifacts"
+    secrets_scope: str = "trevor_agent"
     warehouse_id: str = ""
 
     # Lakebase
-    lakebase_instance: str = "hermes-db"
+    lakebase_instance: str = "trevor-db"
     lakebase_database: str = "databricks_postgres"
-    lakebase_schema: str = "hermes_session"
+    lakebase_schema: str = "trevor_session"
 
     # Model serving
     llm_endpoint: str = "databricks-qwen35-122b-a10b"
@@ -85,8 +85,8 @@ class Config:
     mcp_enabled: bool = False
 
     # Local cache + Hermes home
-    cache_root: Path = field(default_factory=lambda: Path("/tmp/hermes_cache"))
-    hermes_home: Path = field(default_factory=lambda: Path("/tmp/hermes_cache/hermes_home"))
+    cache_root: Path = field(default_factory=lambda: Path("/tmp/trevor_cache"))
+    trevor_home: Path = field(default_factory=lambda: Path("/tmp/trevor_cache/trevor_home"))
 
     # Databricks-ops master switches (see docs/DATABRICKS_OPS.md)
     writes_enabled: bool = False
@@ -98,9 +98,9 @@ class Config:
     log_level: str = "INFO"
 
     @property
-    def hermes_home_volume_path(self) -> str:
+    def trevor_home_volume_path(self) -> str:
         """Absolute UC Volume root for the Hermes home mirror."""
-        return f"/Volumes/{self.catalog}/{self.schema}/{self.hermes_home_volume}"
+        return f"/Volumes/{self.catalog}/{self.schema}/{self.trevor_home_volume}"
 
     @property
     def artifacts_volume_path(self) -> str:
@@ -111,57 +111,57 @@ class Config:
 @lru_cache(maxsize=1)
 def load() -> Config:
     """Load the immutable runtime config from the environment."""
-    cache_root = Path(_str_env("HERMES_DATABRICKS_CACHE_ROOT", "/tmp/hermes_cache"))
-    hermes_home = Path(_str_env("HERMES_HOME", str(cache_root / "hermes_home")))
+    cache_root = Path(_str_env("TREVOR_DATABRICKS_CACHE_ROOT", "/tmp/trevor_cache"))
+    trevor_home = Path(_str_env("HERMES_HOME", str(cache_root / "trevor_home")))
 
-    catalog = _str_env("HERMES_DATABRICKS_CATALOG", "workspace")
-    schema = _str_env("HERMES_DATABRICKS_SCHEMA", "hermes_agent")
-    hermes_home_volume = _str_env("HERMES_DATABRICKS_HERMES_HOME_VOLUME", "hermes_home")
-    artifacts_volume = _str_env("HERMES_DATABRICKS_ARTIFACTS_VOLUME", "hermes_artifacts")
+    catalog = _str_env("TREVOR_DATABRICKS_CATALOG", "workspace")
+    schema = _str_env("TREVOR_DATABRICKS_SCHEMA", "trevor_agent")
+    trevor_home_volume = _str_env("TREVOR_DATABRICKS_HERMES_HOME_VOLUME", "trevor_home")
+    artifacts_volume = _str_env("TREVOR_DATABRICKS_ARTIFACTS_VOLUME", "trevor_artifacts")
 
     # Default the write allowlists to "everything the bundle owns" so the
     # operator doesn't have to repeat catalog/schema/volume names in two
     # places. The values can still be overridden via env vars.
     default_write_schemas = (f"{catalog}.{schema}.*",)
     default_write_volumes = (
-        f"/Volumes/{catalog}/{schema}/{hermes_home_volume}",
+        f"/Volumes/{catalog}/{schema}/{trevor_home_volume}",
         f"/Volumes/{catalog}/{schema}/{artifacts_volume}",
     )
 
     return Config(
-        agent_name=_str_env("HERMES_DATABRICKS_AGENT_NAME", "Hermes"),
+        agent_name=_str_env("TREVOR_DATABRICKS_AGENT_NAME", "Hermes"),
         catalog=catalog,
         schema=schema,
-        hermes_home_volume=hermes_home_volume,
+        trevor_home_volume=trevor_home_volume,
         artifacts_volume=artifacts_volume,
-        secrets_scope=_str_env("HERMES_DATABRICKS_SECRETS_SCOPE", "hermes_agent"),
-        warehouse_id=_str_env("HERMES_DATABRICKS_WAREHOUSE_ID", ""),
-        lakebase_instance=_str_env("HERMES_DATABRICKS_LAKEBASE_INSTANCE", "hermes-db"),
-        lakebase_database=_str_env("HERMES_DATABRICKS_LAKEBASE_DATABASE", "databricks_postgres"),
-        lakebase_schema=_str_env("HERMES_DATABRICKS_LAKEBASE_SCHEMA", "hermes_session"),
+        secrets_scope=_str_env("TREVOR_DATABRICKS_SECRETS_SCOPE", "trevor_agent"),
+        warehouse_id=_str_env("TREVOR_DATABRICKS_WAREHOUSE_ID", ""),
+        lakebase_instance=_str_env("TREVOR_DATABRICKS_LAKEBASE_INSTANCE", "trevor-db"),
+        lakebase_database=_str_env("TREVOR_DATABRICKS_LAKEBASE_DATABASE", "databricks_postgres"),
+        lakebase_schema=_str_env("TREVOR_DATABRICKS_LAKEBASE_SCHEMA", "trevor_session"),
         llm_endpoint=_str_env(
-            "HERMES_DATABRICKS_LLM_ENDPOINT",
+            "TREVOR_DATABRICKS_LLM_ENDPOINT",
             "databricks-qwen35-122b-a10b",
         ),
-        daily_token_cap=_int_env("HERMES_DATABRICKS_DAILY_TOKEN_CAP", 100_000),
-        heartbeat_seconds=_int_env("HERMES_DATABRICKS_HEARTBEAT_SECONDS", 180),
-        telegram_enabled=_bool_env("HERMES_DATABRICKS_TELEGRAM_ENABLED", True),
-        terminal_backend=_str_env("HERMES_DATABRICKS_TERMINAL_BACKEND", "in_app_subprocess"),
-        browser_backend=_str_env("HERMES_DATABRICKS_BROWSER_BACKEND", "disabled"),
-        mcp_enabled=_bool_env("HERMES_DATABRICKS_MCP_ENABLED", False),
+        daily_token_cap=_int_env("TREVOR_DATABRICKS_DAILY_TOKEN_CAP", 100_000),
+        heartbeat_seconds=_int_env("TREVOR_DATABRICKS_HEARTBEAT_SECONDS", 180),
+        telegram_enabled=_bool_env("TREVOR_DATABRICKS_TELEGRAM_ENABLED", True),
+        terminal_backend=_str_env("TREVOR_DATABRICKS_TERMINAL_BACKEND", "in_app_subprocess"),
+        browser_backend=_str_env("TREVOR_DATABRICKS_BROWSER_BACKEND", "disabled"),
+        mcp_enabled=_bool_env("TREVOR_DATABRICKS_MCP_ENABLED", False),
         cache_root=cache_root,
-        hermes_home=hermes_home,
-        writes_enabled=_bool_env("HERMES_DATABRICKS_WRITES_ENABLED", False),
-        yolo=_bool_env("HERMES_DATABRICKS_YOLO", False),
+        trevor_home=trevor_home,
+        writes_enabled=_bool_env("TREVOR_DATABRICKS_WRITES_ENABLED", False),
+        yolo=_bool_env("TREVOR_DATABRICKS_YOLO", False),
         write_allowed_schemas=_csv_env(
-            "HERMES_DATABRICKS_WRITE_ALLOWED_SCHEMAS",
+            "TREVOR_DATABRICKS_WRITE_ALLOWED_SCHEMAS",
             default=default_write_schemas,
         ),
         write_allowed_volumes=_csv_env(
-            "HERMES_DATABRICKS_WRITE_ALLOWED_VOLUMES",
+            "TREVOR_DATABRICKS_WRITE_ALLOWED_VOLUMES",
             default=default_write_volumes,
         ),
-        log_level=_str_env("HERMES_DATABRICKS_LOG_LEVEL", "INFO"),
+        log_level=_str_env("TREVOR_DATABRICKS_LOG_LEVEL", "INFO"),
     )
 
 

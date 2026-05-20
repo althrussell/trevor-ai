@@ -1,18 +1,18 @@
-# Hermes-on-Databricks Asset Bundle
+# Trevor-on-Databricks Asset Bundle
 #
 # Deploys the full Hermes Agent runtime (hermes-agent==0.14.0) as a
 # Databricks App backed by Lakebase Postgres for session state and
-# UC Volumes for Hermes home/skills/cron/artifacts.
+# UC Volumes for HERMES_HOME (skills, cron, memories, artifacts).
 #
 # Usage:
-#   databricks auth login --host <workspace-url> --profile hermes-free
+#   databricks auth login --host <workspace-url> --profile trevor-free
 #   databricks bundle validate -t free
 #   databricks bundle deploy   -t free
 #   databricks bundle run setup_lakebase -t free
-#   databricks bundle run hermes_app     -t free
+#   databricks bundle run trevor_app     -t free
 
 bundle:
-  name: hermes-on-databricks
+  name: trevor-on-databricks
 
 include:
   - resources/*.yml
@@ -23,12 +23,12 @@ variables:
     default: workspace
 
   schema:
-    description: UC schema name for Hermes-owned objects.
-    default: hermes_agent
+    description: UC schema name for Trevor-owned objects.
+    default: trevor_agent
 
   app_name:
     description: Databricks App name (slug).
-    default: hermes-agent
+    default: trevor-agent
 
   agent_name:
     description: Display name for the Hermes agent.
@@ -40,23 +40,23 @@ variables:
 
   secrets_scope:
     description: Databricks Secrets scope holding Telegram token + optional provider keys.
-    default: hermes_agent
+    default: trevor_agent
 
   lakebase_instance:
-    description: Lakebase database instance name. Must match HERMES_DATABRICKS_LAKEBASE_INSTANCE in app/app.yaml.
+    description: Lakebase database instance name. Must match TREVOR_DATABRICKS_LAKEBASE_INSTANCE in app/app.yaml.
     default: trevor-db
 
   lakebase_database:
     description: Lakebase Postgres database name inside the instance.
     default: databricks_postgres
 
-  hermes_home_volume:
+  trevor_home_volume:
     description: UC Volume name backing HERMES_HOME (config, skills, cron, memories, logs).
-    default: hermes_home
+    default: trevor_home
 
   artifacts_volume:
     description: UC Volume name for agent-generated artifacts and notes.
-    default: hermes_artifacts
+    default: trevor_artifacts
 
   warehouse_id:
     description: Optional SQL Warehouse ID used by the databricks_uc_query_readonly tool. Leave empty to disable.
@@ -109,7 +109,7 @@ targets:
     default: true
     workspace:
       # No host pinned; uses the active Databricks CLI profile.
-      profile: hermes-free
+      profile: trevor-free
     variables:
       heartbeat_seconds: 180
       daily_token_cap: 100000
@@ -123,7 +123,7 @@ targets:
 
   dev:
     workspace:
-      profile: hermes-dev
+      profile: trevor-dev
     variables:
       heartbeat_seconds: 60
       # Dev opts into mutating primitives but never YOLO by default.
@@ -133,7 +133,7 @@ targets:
   prod:
     mode: production
     workspace:
-      profile: hermes-prod
+      profile: trevor-prod
     variables:
       heartbeat_seconds: 300
       daily_token_cap: 1000000

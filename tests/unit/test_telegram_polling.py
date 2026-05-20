@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import pytest
 
-from hermes_databricks import telegram_polling as tp
+from trevor_databricks import telegram_polling as tp
 
 
 def _client(allowed=("alice",), primary="alice") -> tp.TelegramClient:

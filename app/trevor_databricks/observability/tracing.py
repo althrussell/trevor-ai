@@ -14,7 +14,7 @@ import uuid
 from collections.abc import Callable, Iterator
 from typing import Any
 
-log = logging.getLogger("hermes_databricks.observability.tracing")
+log = logging.getLogger("trevor_databricks.observability.tracing")
 
 
 @contextlib.contextmanager

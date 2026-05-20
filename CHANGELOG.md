@@ -7,6 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **BREAKING**: Renamed every project-owned `hermes-*`/`hermes_*` resource
+  to `trevor-*`/`trevor_*` to reflect that the project name is Trevor —
+  Hermes is the upstream brain (`hermes-agent==0.14.0`), nothing more.
+  Operators must `databricks bundle destroy` under the old `hermes-free`
+  profile and redeploy under `trevor-free`; secrets scope must be
+  recreated as `trevor_agent`. Rename map:
+  - Bundle: `hermes-on-databricks` -> `trevor-on-databricks`
+  - App slug: `hermes-agent` -> `trevor-agent`
+  - UC schema: `workspace.hermes_agent` -> `workspace.trevor_agent`
+  - UC volumes: `hermes_home`/`hermes_artifacts` -> `trevor_home`/`trevor_artifacts`
+  - Lakebase schema: `hermes_session` -> `trevor_session`
+  - Secrets scope: `hermes_agent` -> `trevor_agent`
+  - CLI profiles: `hermes-{free,dev,prod}` -> `trevor-{free,dev,prod}`
+  - Job names: `hermes-setup-*` -> `trevor-setup-*`
+  - Python pkg: `app/hermes_databricks/` -> `app/trevor_databricks/`
+  - Env var prefix: `HERMES_DATABRICKS_*` -> `TREVOR_DATABRICKS_*`
+  - Classes: `HermesRuntime`/`HermesSupervisor` -> `TrevorRuntime`/`TrevorSupervisor`
+  - Cache root: `/tmp/hermes_cache/hermes_home` -> `/tmp/trevor_cache/trevor_home`
+
+  Unchanged (upstream-brain owned): `hermes-agent` PyPI dep, the
+  `HERMES_HOME` and `HERMES_NONINTERACTIVE` env vars consumed by
+  `hermes-agent`, `agent_name = "Hermes"` persona default, and the
+  `/hermes/status` diagnostic endpoint (returns brain status).
+
 ### Fixed
 
 - CI: make the lint, offline-checks, and unit-tests jobs actually
@@ -113,8 +139,8 @@ Telegram.
   `app/app.yaml`), deploy/destroy/smoke/local-dev scripts under
   `scripts/`.
 - **Phase 2** — Embedded Hermes `AIAgent` lifecycle
-  (`hermes_databricks.runtime.HermesRuntime`), supervisor
-  (`hermes_databricks.supervisor.HermesSupervisor`), typed `Config`
+  (`trevor_databricks.runtime.TrevorRuntime`), supervisor
+  (`trevor_databricks.supervisor.TrevorSupervisor`), typed `Config`
   loader from environment, and `HealthRegistry`.
 - **Phase 3** — `DatabricksOpenAIClientFactory` providing a Databricks
   Foundation Model serving endpoint as an OpenAI-compatible client.
@@ -135,14 +161,14 @@ Telegram.
   App SP's Postgres role via the Databricks REST API
   (`/api/2.0/database/instances/{name}/roles`) — required on Free
   Edition where `databricks_create_role()` SQL is unavailable —
-  then grants least-privilege on `hermes_session`. Optional
+  then grants least-privilege on `trevor_session`. Optional
   `pg_trgm` extension + GIN index are best-effort.
 - **Phase 5** — `UCVolumeHome` mirroring `HERMES_HOME` between the
-  ephemeral `/tmp/hermes_cache/hermes_home` and a UC Volume.
+  ephemeral `/tmp/trevor_cache/trevor_home` and a UC Volume.
   Bi-directional sync via the SDK Files API. Path guards reject
   absolute paths and `..` escapes.
 - **Phase 6** — Telegram outbound long-poll channel
-  (`hermes_databricks.telegram_polling`) with strict server-side
+  (`trevor_databricks.telegram_polling`) with strict server-side
   allowlist. Health probe registered with the supervisor.
 - **Phase 7** — Databricks-native toolset
   (`databricks_serving_endpoint_status`, `databricks_uc_describe_table`,

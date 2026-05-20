@@ -31,9 +31,9 @@ import os
 import threading
 from typing import Any
 
-from hermes_databricks.config import Config
+from trevor_databricks.config import Config
 
-log = logging.getLogger("hermes_databricks.databricks_provider")
+log = logging.getLogger("trevor_databricks.databricks_provider")
 
 
 # ---------------------------------------------------------------------
@@ -193,7 +193,7 @@ class DatabricksOpenAIClientFactory:
         if original_init is None:
             log.warning("AIAgent has no __init__; subagent hook not installed")
             return False
-        if getattr(original_init, "_hermes_databricks_subagent_hook", False):
+        if getattr(original_init, "_trevor_databricks_subagent_hook", False):
             return True  # already installed by an earlier bootstrap
 
         factory = self
@@ -224,7 +224,7 @@ class DatabricksOpenAIClientFactory:
                     "child will run with default OpenAI client and may stream"
                 )
 
-        init_with_databricks_hook._hermes_databricks_subagent_hook = True  # type: ignore[attr-defined]
+        init_with_databricks_hook._trevor_databricks_subagent_hook = True  # type: ignore[attr-defined]
         try:
             AIAgent.__init__ = init_with_databricks_hook  # type: ignore[method-assign]
             log.info(
@@ -528,14 +528,14 @@ def _install_request_sanitiser(oai_client: Any) -> None:
     if original is None:
         log.warning("openai Completions class has no .create; sanitiser not installed")
         return
-    if getattr(original, "_hermes_databricks_sanitised", False):
+    if getattr(original, "_trevor_databricks_sanitised", False):
         return  # already installed
 
     def create_sanitised(self, *args: Any, **kwargs: Any):  # type: ignore[no-untyped-def]
         kwargs = _sanitise_oai_kwargs(kwargs)
         return original(self, *args, **kwargs)
 
-    create_sanitised._hermes_databricks_sanitised = True  # type: ignore[attr-defined]
+    create_sanitised._trevor_databricks_sanitised = True  # type: ignore[attr-defined]
     try:
         Completions.create = create_sanitised  # type: ignore[attr-defined]
         log.info(
@@ -554,14 +554,14 @@ def _install_request_sanitiser(oai_client: Any) -> None:
 
         async_original = getattr(AsyncCompletions, "create", None)
         if async_original is not None and not getattr(
-            async_original, "_hermes_databricks_sanitised", False
+            async_original, "_trevor_databricks_sanitised", False
         ):
 
             async def acreate_sanitised(self, *args: Any, **kwargs: Any):  # type: ignore[no-untyped-def]
                 kwargs = _sanitise_oai_kwargs(kwargs)
                 return await async_original(self, *args, **kwargs)
 
-            acreate_sanitised._hermes_databricks_sanitised = True  # type: ignore[attr-defined]
+            acreate_sanitised._trevor_databricks_sanitised = True  # type: ignore[attr-defined]
             AsyncCompletions.create = acreate_sanitised  # type: ignore[attr-defined]
             log.debug("Installed Databricks sanitiser on AsyncCompletions.create")
     except Exception:

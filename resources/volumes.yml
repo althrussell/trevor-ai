@@ -1,15 +1,15 @@
 resources:
   volumes:
-    hermes_home_volume:
+    trevor_home_volume:
       catalog_name: ${var.catalog}
-      schema_name: ${resources.schemas.hermes_schema.name}
-      name: ${var.hermes_home_volume}
+      schema_name: ${resources.schemas.trevor_schema.name}
+      name: ${var.trevor_home_volume}
       volume_type: MANAGED
       comment: "Durable HERMES_HOME: config.yaml, skills/, cron/, memories/, logs/curator, image_cache/, audio_cache/, mcp-tokens/."
 
-    hermes_artifacts_volume:
+    trevor_artifacts_volume:
       catalog_name: ${var.catalog}
-      schema_name: ${resources.schemas.hermes_schema.name}
+      schema_name: ${resources.schemas.trevor_schema.name}
       name: ${var.artifacts_volume}
       volume_type: MANAGED
       comment: "Agent-generated artifacts and operator notes."

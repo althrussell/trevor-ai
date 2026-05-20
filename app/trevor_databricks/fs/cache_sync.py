@@ -9,9 +9,9 @@ from __future__ import annotations
 
 import logging
 
-from hermes_databricks.fs.volume_fs import UCVolumeHome
+from trevor_databricks.fs.volume_fs import UCVolumeHome
 
-log = logging.getLogger("hermes_databricks.fs.cache_sync")
+log = logging.getLogger("trevor_databricks.fs.cache_sync")
 
 
 class CacheSync:

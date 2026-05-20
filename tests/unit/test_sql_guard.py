@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from hermes_databricks.tools.sql_guard import validate_readonly
+from trevor_databricks.tools.sql_guard import validate_readonly
 
 
 @pytest.mark.parametrize(

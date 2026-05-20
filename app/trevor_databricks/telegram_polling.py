@@ -1,4 +1,4 @@
-"""Telegram long-polling channel for Hermes-on-Databricks.
+"""Telegram long-polling channel for Trevor-on-Databricks.
 
 Databricks Apps reject anonymous inbound traffic (workspace OAuth
 gate), so Telegram webhooks aren't viable. Instead we run an outbound
@@ -30,10 +30,10 @@ from typing import Any
 
 import httpx
 
-from hermes_databricks import config as cfg_mod
-from hermes_databricks.telegram_format import md_to_telegram_html, strip_markdown
+from trevor_databricks import config as cfg_mod
+from trevor_databricks.telegram_format import md_to_telegram_html, strip_markdown
 
-log = logging.getLogger("hermes_databricks.telegram_polling")
+log = logging.getLogger("trevor_databricks.telegram_polling")
 
 OnMessage = Callable[[int, str | None, str], Awaitable[str | None]]
 

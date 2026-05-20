@@ -1,11 +1,11 @@
--- Hermes-on-Databricks Lakebase schema.
+-- Trevor-on-Databricks Lakebase schema.
 -- Applied by sql/setup_lakebase.py at deploy time and by
 -- LakebaseSessionDB.ensure_schema() as a self-bootstrap fallback.
 --
 -- The DDL is idempotent (CREATE ... IF NOT EXISTS), safe to re-run.
 
-CREATE SCHEMA IF NOT EXISTS hermes_session;
-SET search_path TO hermes_session;
+CREATE SCHEMA IF NOT EXISTS trevor_session;
+SET search_path TO trevor_session;
 
 CREATE EXTENSION IF NOT EXISTS pg_trgm;
 

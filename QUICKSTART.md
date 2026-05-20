@@ -1,4 +1,4 @@
-# Quickstart — Hermes on Databricks Free Edition
+# Quickstart — Trevor on Databricks Free Edition
 
 Get a real Hermes agent running on Databricks Free Edition, reachable
 from your phone via Telegram, in about ten minutes.
@@ -11,7 +11,7 @@ from your phone via Telegram, in about ten minutes.
 
 ## What you'll end up with
 
-* A Databricks App (`hermes-agent`) running 24/7 on Free Edition.
+* A Databricks App (`trevor-agent`) running 24/7 on Free Edition.
 * A real `hermes-agent==0.14.0` `AIAgent` inside it, backed by:
   * a Databricks-hosted open-weights model (default `databricks-gpt-oss-120b`),
   * a Lakebase Postgres instance for session + message + tool-call history,
@@ -51,14 +51,14 @@ Use OAuth (recommended) — it doesn't expire and it's safer than a PAT.
 ```bash
 databricks auth login \
   --host https://<your-workspace>.cloud.databricks.com \
-  --profile hermes-free
+  --profile trevor-free
 ```
 
 A browser tab will pop open. Approve, return to the terminal, and
 verify:
 
 ```bash
-databricks --profile hermes-free current-user me
+databricks --profile trevor-free current-user me
 ```
 
 You should see your email. If you prefer a PAT for ephemeral testing:
@@ -66,7 +66,7 @@ You should see your email. If you prefer a PAT for ephemeral testing:
 ```bash
 cat >> ~/.databrickscfg <<'EOF'
 
-[hermes-free]
+[trevor-free]
 host  = https://<your-workspace>.cloud.databricks.com
 token = <PAT-from-User-Settings>
 EOF
@@ -97,7 +97,7 @@ doesn't expose `databricks-gpt-oss-120b` — list what's
 available with:
 
 ```bash
-databricks --profile hermes-free serving-endpoints list \
+databricks --profile trevor-free serving-endpoints list \
   | jq -r '.[] | .name' | grep -i databricks
 ```
 
@@ -110,7 +110,7 @@ with `--var llm_endpoint=<name>` in step 5.
 ## 3. Validate the bundle
 
 ```bash
-databricks bundle validate -t free --profile hermes-free
+databricks bundle validate -t free --profile trevor-free
 ```
 
 Expected: `Validation OK!` and a summary of resources. If you see a
@@ -127,7 +127,7 @@ instead of letting the bundle create a new one.
 List your instances:
 
 ```bash
-databricks --profile hermes-free database list-database-instances \
+databricks --profile trevor-free database list-database-instances \
   | jq -r '.database_instances[] | .name'
 ```
 
@@ -147,7 +147,7 @@ target (see `resources/lakebase.yml`).
 ## 5. Deploy
 
 ```bash
-databricks bundle deploy -t free --profile hermes-free \
+databricks bundle deploy -t free --profile trevor-free \
   --var lakebase_instance=<existing-instance-name>
 ```
 
@@ -156,7 +156,7 @@ allows new ones.)
 
 This provisions: the UC schema, two UC volumes, the Asset Bundle
 files in `~/.bundle/`, the setup job, the Databricks App
-(`hermes-agent`), and all least-privilege grants.
+(`trevor-agent`), and all least-privilege grants.
 
 Wait for `Deployment complete!`.
 
@@ -168,7 +168,7 @@ The bundle wires three Telegram secrets into the App via resource
 bindings. The scope must exist before the App starts.
 
 ```bash
-databricks --profile hermes-free secrets create-scope hermes_agent
+databricks --profile trevor-free secrets create-scope trevor_agent
 ```
 
 Now mint a Telegram bot. In Telegram:
@@ -188,16 +188,16 @@ without the `@`. We'll call it `<your_handle>` below.
 Put the secrets:
 
 ```bash
-databricks --profile hermes-free secrets put-secret \
-  hermes_agent telegram_bot_token \
+databricks --profile trevor-free secrets put-secret \
+  trevor_agent telegram_bot_token \
   --string-value '<paste-bot-token-here>'
 
-databricks --profile hermes-free secrets put-secret \
-  hermes_agent telegram_primary_user_handle \
+databricks --profile trevor-free secrets put-secret \
+  trevor_agent telegram_primary_user_handle \
   --string-value '<your_handle>'
 
-databricks --profile hermes-free secrets put-secret \
-  hermes_agent telegram_allowed_users \
+databricks --profile trevor-free secrets put-secret \
+  trevor_agent telegram_allowed_users \
   --string-value '<your_handle>'
 ```
 
@@ -209,21 +209,21 @@ databricks --profile hermes-free secrets put-secret \
 
 ## 7. Seed Lakebase
 
-The setup job applies the DDL (`hermes_session` schema, `sessions`,
+The setup job applies the DDL (`trevor_session` schema, `sessions`,
 `messages`, `tool_calls`, …), creates the App SP's Postgres role
 (via the Databricks REST API, not `databricks_create_role()` —
 which Free Edition doesn't have), and grants least-privilege on the
 schema.
 
 ```bash
-databricks bundle run setup_lakebase -t free --profile hermes-free
+databricks bundle run setup_lakebase -t free --profile trevor-free
 ```
 
 Expected output ends with something like:
 
 ```
 DDL applied: 16, skipped: 1
-GRANTed least-privilege on schema "hermes_session" to "<sp-client-id>"
+GRANTed least-privilege on schema "trevor_session" to "<sp-client-id>"
 ```
 
 `skipped: 1` is fine — that's the optional `pg_trgm` GIN index that
@@ -234,7 +234,7 @@ Free Edition Lakebase doesn't support.
 ## 8. Start the App
 
 ```bash
-databricks bundle run hermes_app -t free --profile hermes-free
+databricks bundle run trevor_app -t free --profile trevor-free
 ```
 
 The CLI prints the App URL when it's ready. Open it in a browser —
@@ -242,9 +242,9 @@ you'll get a workspace-OAuth prompt, then a JSON banner:
 
 ```json
 {
-  "service": "hermes-agent",
+  "service": "trevor-agent",
   "version": "0.1.0",
-  "hermes_home": "/tmp/hermes_cache/hermes_home",
+  "trevor_home": "/tmp/trevor_cache/trevor_home",
   "endpoints": ["/health", "/ready", "/config", "/hermes/status", "/debug/*"]
 }
 ```
@@ -256,7 +256,7 @@ you'll get a workspace-OAuth prompt, then a JSON banner:
 From your terminal:
 
 ```bash
-APP_URL=$(databricks --profile hermes-free apps get hermes-agent | jq -r '.url')
+APP_URL=$(databricks --profile trevor-free apps get trevor-agent | jq -r '.url')
 
 # liveness
 curl -sf $APP_URL/health
@@ -284,7 +284,7 @@ curl -sf $APP_URL/debug/model-turn \
 and prints the JSON responses:
 
 ```bash
-APP_URL=$APP_URL PROFILE=hermes-free scripts/smoke_test.sh
+APP_URL=$APP_URL PROFILE=trevor-free scripts/smoke_test.sh
 ```
 
 ---
@@ -322,7 +322,7 @@ You should get a reply within a few seconds. If not, see [Troubleshooting](#trou
   tokens into `app.yaml` or `databricks.yml`.
 * When you rotate a token, just re-`put-secret` the same key — the
   App reads through `dbutils.secrets.get` on every boot. Restart
-  the App (`databricks apps restart hermes-agent`) to pick it up
+  the App (`databricks apps restart trevor-agent`) to pick it up
   immediately.
 * The `RedactingFormatter` in `observability/logging.py` strips
   bearer tokens, Telegram bot tokens, and Postgres URIs out of
@@ -335,9 +335,9 @@ You should get a reply within a few seconds. If not, see [Troubleshooting](#trou
   Anything you write to local disk is wiped when the App restarts.
 * Watch `agent_events` and `usage_ledger` in Lakebase — they're a
   ready-made trace and cost ledger.
-* The `hermes_home` volume holds skills, config, cron jobs, and the
+* The `trevor_home` volume holds skills, config, cron jobs, and the
   trajectory store. Treat it as the system-of-record for the
-  agent's "personality"; `hermes_artifacts` is for outputs.
+  agent's "personality"; `trevor_artifacts` is for outputs.
 
 ### Cost & quota
 
@@ -381,20 +381,20 @@ You should get a reply within a few seconds. If not, see [Troubleshooting](#trou
 | Symptom | What to check |
 |---|---|
 | `databricks bundle deploy` says `LakebaseLimitReached` | You hit Free Edition's single-instance limit. Pass `--var lakebase_instance=<existing-instance>` (step 4). |
-| `setup_lakebase` fails with `permission denied for schema hermes_session` | The App SP role didn't get created. Re-run the job; it now creates the SP role via the Databricks REST API before granting. |
+| `setup_lakebase` fails with `permission denied for schema trevor_session` | The App SP role didn't get created. Re-run the job; it now creates the SP role via the Databricks REST API before granting. |
 | `/ready` returns 503 with `hermes_runtime: false` | `GET /debug/runtime` and look at `errors`. Usually a model endpoint mismatch — list endpoints with `databricks serving-endpoints list` and set `--var llm_endpoint=`. |
 | Telegram bot silent | `GET /debug/telegram` — `telegram_loaded` should be `true`, `bot_username` populated, your handle in `allowed_usernames`. If not, re-check the secret values. |
 | `Bad request: json: unknown field "stream_options"` in logs | Should not happen — the Databricks provider sets `_disable_streaming = True`. If you see it, your `app/requirements.txt` is shipping a different Hermes version that re-enables streaming. |
-| `Invalid JSON schema - integer types do not support minimum` | Should not happen — `_install_request_sanitiser` strips those. Confirm `app/hermes_databricks/databricks_provider.py` is unchanged. |
+| `Invalid JSON schema - integer types do not support minimum` | Should not happen — `_install_request_sanitiser` strips those. Confirm `app/trevor_databricks/databricks_provider.py` is unchanged. |
 | `Connection error` after the first turn | The bearer-token refresh task isn't running. `GET /debug/supervisor` and confirm the `heartbeat` task is alive. |
-| `databricks bundle run hermes_app` exits immediately | The App is now compute-attached; the CLI returns once compute is reserved. Open the App URL printed in the output. |
+| `databricks bundle run trevor_app` exits immediately | The App is now compute-attached; the CLI returns once compute is reserved. Open the App URL printed in the output. |
 
 ---
 
 ## Tear it down
 
 ```bash
-PROFILE=hermes-free scripts/destroy.sh
+PROFILE=trevor-free scripts/destroy.sh
 ```
 
 This deletes the App, the bundle resources, and (if the bundle owns
@@ -411,7 +411,7 @@ it) the Lakebase instance. Your Telegram bot keeps existing in
   `--var warehouse_id=<id>`.
 * Promote to a paid workspace — same commands, swap `-t free` for
   `-t prod`.
-* Wire a second channel — clone `app/hermes_databricks/telegram_polling.py`
+* Wire a second channel — clone `app/trevor_databricks/telegram_polling.py`
   and register it with the supervisor.
 
 If you ship something cool, open a PR or an issue. See

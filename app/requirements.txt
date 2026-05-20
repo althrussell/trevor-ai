@@ -1,4 +1,4 @@
-# Hermes-on-Databricks runtime dependencies.
+# Trevor-on-Databricks runtime dependencies.
 #
 # Hermes brings its own pinned dependency tree (openai, pydantic,
 # httpx, pyyaml, requests, etc.). We only pin the additional

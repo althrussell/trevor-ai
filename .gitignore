@@ -36,9 +36,9 @@ htmlcov/
 *.swo
 .DS_Store
 
-# Local Hermes cache for dev
-.hermes_cache/
-hermes_home_local/
+# Local Trevor cache for dev (mirrors the in-container HERMES_HOME)
+.trevor_cache/
+trevor_home_local/
 
 # Databricks
 .databricks/

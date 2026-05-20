@@ -1,6 +1,6 @@
 """Observability helpers: structured logging, redaction, tracing."""
 
-from hermes_databricks.observability.logging import (
+from trevor_databricks.observability.logging import (
     RedactingFormatter,
     configure_logging,
     redact,

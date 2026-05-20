@@ -22,9 +22,7 @@ from pathlib import Path
 
 import pytest
 
-SOUL_PATH = (
-    Path(__file__).resolve().parent.parent.parent / "app" / "seeds" / "home" / "soul.md"
-)
+SOUL_PATH = Path(__file__).resolve().parent.parent.parent / "app" / "seeds" / "home" / "soul.md"
 
 
 @pytest.fixture(scope="module")

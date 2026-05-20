@@ -1,5 +1,5 @@
 name: Bug report
-description: Report something that's broken in Hermes on Databricks.
+description: Report something that's broken in Trevor on Databricks.
 title: "[bug] <short summary>"
 labels: ["bug", "triage"]
 body:
@@ -16,7 +16,7 @@ body:
   - type: input
     id: version
     attributes:
-      label: hermes-on-databricks version / commit
+      label: trevor-on-databricks version / commit
       description: "Output of `git rev-parse --short HEAD` or the release tag."
       placeholder: "v0.1.0 or 1a2b3c4"
     validations:
@@ -49,7 +49,7 @@ body:
         - "`databricks bundle validate`"
         - "`databricks bundle deploy`"
         - "`databricks bundle run setup_lakebase`"
-        - "`databricks bundle run hermes_app`"
+        - "`databricks bundle run trevor_app`"
         - "App startup (FastAPI lifespan)"
         - "Hermes runtime / `run_conversation`"
         - "Databricks provider (LLM call)"
@@ -88,8 +88,8 @@ body:
       description: Minimal, copy-pasteable.
       render: bash
       placeholder: |
-        1. databricks bundle deploy -t free --profile hermes-free
-        2. databricks bundle run setup_lakebase -t free --profile hermes-free
+        1. databricks bundle deploy -t free --profile trevor-free
+        2. databricks bundle run setup_lakebase -t free --profile trevor-free
         3. curl -sf $APP_URL/debug/model-turn -d '{"message":"hi"}'
         4. ...
     validations:

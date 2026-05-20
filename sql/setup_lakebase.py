@@ -1,9 +1,9 @@
 # Databricks notebook source
 # MAGIC %md
-# MAGIC # Hermes-on-Databricks — Lakebase setup
+# MAGIC # Trevor-on-Databricks — Lakebase setup
 # MAGIC
 # MAGIC Run by the bundle job `setup_lakebase`. Creates the
-# MAGIC `hermes_session` schema in the bundle's Lakebase instance,
+# MAGIC `trevor_session` schema in the bundle's Lakebase instance,
 # MAGIC issues the required DDL, and grants the Databricks App service
 # MAGIC principal CONNECT + schema/table/sequence privileges.
 # MAGIC
@@ -17,11 +17,11 @@
 
 dbutils.widgets.text("instance_name", "")
 dbutils.widgets.text("app_sp_client_id", "")
-dbutils.widgets.text("schema_name", "hermes_session")
+dbutils.widgets.text("schema_name", "trevor_session")
 
-instance_name = dbutils.widgets.get("instance_name") or "hermes-db"
+instance_name = dbutils.widgets.get("instance_name") or "trevor-db"
 app_sp_client_id = dbutils.widgets.get("app_sp_client_id") or ""
-schema_name = dbutils.widgets.get("schema_name") or "hermes_session"
+schema_name = dbutils.widgets.get("schema_name") or "trevor_session"
 
 print(f"instance_name={instance_name}")
 print(f"app_sp_client_id={app_sp_client_id or '(none)'}")
@@ -69,7 +69,7 @@ DDL_PRELUDE = [
     # agent_app is a scratchpad for the bundled Databricks skills
     # (e.g. lakebase_provisioned / lakebase_autoscale recipes) so they
     # can stand up demo objects without colliding with the production
-    # hermes_session schema. Skills create their own tables inside it.
+    # trevor_session schema. Skills create their own tables inside it.
     'CREATE SCHEMA IF NOT EXISTS "agent_app"',
     f'SET search_path TO "{schema_name}"',
 ]
@@ -303,7 +303,7 @@ if app_sp_client_id:
             f'GRANT ALL ON ALL SEQUENCES IN SCHEMA "{schema_name}" TO "{app_sp_client_id}"',
             f'ALTER DEFAULT PRIVILEGES IN SCHEMA "{schema_name}" GRANT ALL ON TABLES TO "{app_sp_client_id}"',
             f'ALTER DEFAULT PRIVILEGES IN SCHEMA "{schema_name}" GRANT ALL ON SEQUENCES TO "{app_sp_client_id}"',
-            # agent_app: same surface as hermes_session so skills can
+            # agent_app: same surface as trevor_session so skills can
             # build short-lived demo objects (the SP owns whatever it
             # creates here).
             f'GRANT USAGE, CREATE ON SCHEMA "agent_app" TO "{app_sp_client_id}"',

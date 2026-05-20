@@ -1,4 +1,4 @@
-# Runtime Constraints — Hermes Inside Databricks Apps (Free Edition)
+# Runtime Constraints — Trevor's Hermes Brain Inside Databricks Apps (Free Edition)
 
 This is a brutally-honest list of the constraints we have to design
 around. If a feature in Hermes assumes any of these things are
@@ -96,7 +96,7 @@ gate the feature behind an explicit backend selector.
   * `files.delete(path)`.
 * Files API does not enforce atomic rename; concurrent writers can
   produce torn states. We avoid this by treating UC Volume as the
-  durable mirror of `/tmp/hermes_cache`, written from a single async
+  durable mirror of `/tmp/trevor_cache`, written from a single async
   writer task.
 
 ## 7. Secrets
@@ -116,7 +116,7 @@ gate the feature behind an explicit backend selector.
 * Default endpoint: `databricks-gpt-oss-120b` (Free Edition has a
   number of open-weights endpoints pre-provisioned; `databricks-gpt-oss-120b`
   and `databricks-qwen3-next-80b-a3b-instruct` are both viable
-  swap-ins via `HERMES_DATABRICKS_LLM_ENDPOINT`).
+  swap-ins via `TREVOR_DATABRICKS_LLM_ENDPOINT`).
 * Endpoints are OpenAI-compatible; the URL is
   `https://<workspace>/serving-endpoints/<endpoint>/invocations` for
   REST, and the OpenAI client returned by
@@ -167,7 +167,7 @@ marked ⚠️, and skips (never called by core loop) the ones marked ❌.
 
 | Method | Status |
 |--------|--------|
-| `__init__(db_path=None)` | ✅ replaced signature: `(lakebase, schema="hermes_session")` |
+| `__init__(db_path=None)` | ✅ replaced signature: `(lakebase, schema="trevor_session")` |
 | `close()` | ✅ closes pool |
 | `create_session(session_id, source, **kwargs) -> str` | ✅ |
 | `ensure_session(session_id, source, **kwargs) -> str` | ✅ |

@@ -6,8 +6,8 @@ import json
 
 import pytest
 
-from hermes_databricks import config as cfg_mod
-from hermes_databricks.tools import databricks_toolset as ts
+from trevor_databricks import config as cfg_mod
+from trevor_databricks.tools import databricks_toolset as ts
 
 
 @pytest.fixture(autouse=True)
@@ -20,29 +20,29 @@ def _clear_config_cache() -> None:
 
 @pytest.fixture
 def writes_off(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("HERMES_DATABRICKS_WRITES_ENABLED", "false")
-    monkeypatch.setenv("HERMES_DATABRICKS_YOLO", "false")
+    monkeypatch.setenv("TREVOR_DATABRICKS_WRITES_ENABLED", "false")
+    monkeypatch.setenv("TREVOR_DATABRICKS_YOLO", "false")
 
 
 @pytest.fixture
 def writes_on_no_yolo(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("HERMES_DATABRICKS_WRITES_ENABLED", "true")
-    monkeypatch.setenv("HERMES_DATABRICKS_YOLO", "false")
-    monkeypatch.setenv("HERMES_DATABRICKS_WAREHOUSE_ID", "WH-TEST")
+    monkeypatch.setenv("TREVOR_DATABRICKS_WRITES_ENABLED", "true")
+    monkeypatch.setenv("TREVOR_DATABRICKS_YOLO", "false")
+    monkeypatch.setenv("TREVOR_DATABRICKS_WAREHOUSE_ID", "WH-TEST")
     monkeypatch.setenv(
-        "HERMES_DATABRICKS_WRITE_ALLOWED_SCHEMAS",
-        "workspace.hermes_agent.*,workspace.scratch.*",
+        "TREVOR_DATABRICKS_WRITE_ALLOWED_SCHEMAS",
+        "workspace.trevor_agent.*,workspace.scratch.*",
     )
 
 
 @pytest.fixture
 def writes_on_with_yolo(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("HERMES_DATABRICKS_WRITES_ENABLED", "true")
-    monkeypatch.setenv("HERMES_DATABRICKS_YOLO", "true")
-    monkeypatch.setenv("HERMES_DATABRICKS_WAREHOUSE_ID", "WH-TEST")
+    monkeypatch.setenv("TREVOR_DATABRICKS_WRITES_ENABLED", "true")
+    monkeypatch.setenv("TREVOR_DATABRICKS_YOLO", "true")
+    monkeypatch.setenv("TREVOR_DATABRICKS_WAREHOUSE_ID", "WH-TEST")
     monkeypatch.setenv(
-        "HERMES_DATABRICKS_WRITE_ALLOWED_SCHEMAS",
-        "workspace.hermes_agent.*",
+        "TREVOR_DATABRICKS_WRITE_ALLOWED_SCHEMAS",
+        "workspace.trevor_agent.*",
     )
 
 
@@ -52,14 +52,12 @@ def _fake_execute_response():
     schema = type("Schema", (), {"columns": ()})()
     manifest = type("Manifest", (), {"schema": schema})()
     result = type("Result", (), {"data_array": ()})()
-    return type(
-        "Resp", (), {"status": status, "manifest": manifest, "result": result}
-    )()
+    return type("Resp", (), {"status": status, "manifest": manifest, "result": result})()
 
 
 class TestWritesEnabledFlag:
     def test_default_is_false(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.delenv("HERMES_DATABRICKS_WRITES_ENABLED", raising=False)
+        monkeypatch.delenv("TREVOR_DATABRICKS_WRITES_ENABLED", raising=False)
         assert cfg_mod.load().writes_enabled is False
 
     def test_writes_off_blocks_sql_execute(self, writes_off: None) -> None:
@@ -70,7 +68,7 @@ class TestWritesEnabledFlag:
     def test_writes_off_blocks_volume_write(self, writes_off: None) -> None:
         result = json.loads(
             ts._h_volume_write(
-                {"path": "/Volumes/workspace/hermes_agent/hermes_home/x.txt", "content": "y"}
+                {"path": "/Volumes/workspace/trevor_agent/trevor_home/x.txt", "content": "y"}
             )
         )
         assert "error" in result
@@ -78,14 +76,14 @@ class TestWritesEnabledFlag:
 
     def test_writes_off_blocks_volume_mkdir(self, writes_off: None) -> None:
         result = json.loads(
-            ts._h_volume_mkdir({"path": "/Volumes/workspace/hermes_agent/hermes_home/new"})
+            ts._h_volume_mkdir({"path": "/Volumes/workspace/trevor_agent/trevor_home/new"})
         )
         assert "error" in result
 
     def test_writes_off_still_allows_readonly_path(self, writes_off: None) -> None:
         """`databricks_sql_execute` for a SELECT bypasses the write check."""
         # The actual call will fail with "no warehouse configured" because
-        # we deliberately don't set HERMES_DATABRICKS_WAREHOUSE_ID. What
+        # we deliberately don't set TREVOR_DATABRICKS_WAREHOUSE_ID. What
         # matters is that it doesn't reject with the writes-disabled error.
         result = json.loads(ts._h_sql_execute({"sql": "SELECT 1"}))
         assert "error" in result
@@ -111,7 +109,7 @@ class TestYoloFlag:
         result = json.loads(
             ts._h_sql_execute(
                 {
-                    "sql": "INSERT INTO workspace.hermes_agent.t VALUES (1)",
+                    "sql": "INSERT INTO workspace.trevor_agent.t VALUES (1)",
                 }
             )
         )
@@ -119,9 +117,7 @@ class TestYoloFlag:
         assert sent["warehouse_id"] == "WH-TEST"
 
     def test_writes_on_blocks_destructive_without_yolo(self, writes_on_no_yolo: None) -> None:
-        result = json.loads(
-            ts._h_sql_execute({"sql": "DROP TABLE workspace.hermes_agent.t"})
-        )
+        result = json.loads(ts._h_sql_execute({"sql": "DROP TABLE workspace.trevor_agent.t"}))
         assert "error" in result
         assert "yolo" in result["error"].lower()
         assert "DROP" in result.get("destructive", [])
@@ -133,25 +129,17 @@ class TestYoloFlag:
             statement_execution = type(
                 "SE",
                 (),
-                {
-                    "execute_statement": staticmethod(
-                        lambda **_kw: _fake_execute_response()
-                    )
-                },
+                {"execute_statement": staticmethod(lambda **_kw: _fake_execute_response())},
             )
 
         monkeypatch.setattr(ts, "_client", lambda: _FakeWC)
-        result = json.loads(
-            ts._h_sql_execute({"sql": "DROP TABLE workspace.hermes_agent.t"})
-        )
+        result = json.loads(ts._h_sql_execute({"sql": "DROP TABLE workspace.trevor_agent.t"}))
         assert result["ok"] is True, result
 
 
 class TestAllowedSchemaList:
     def test_target_outside_allowlist_rejected(self, writes_on_no_yolo: None) -> None:
-        result = json.loads(
-            ts._h_sql_execute({"sql": "INSERT INTO other.cat.tbl VALUES (1)"})
-        )
+        result = json.loads(ts._h_sql_execute({"sql": "INSERT INTO other.cat.tbl VALUES (1)"}))
         assert "error" in result
         assert "WRITE_ALLOWED_SCHEMAS" in result["error"]
         assert "other.cat.tbl" in result["denied"]
@@ -160,20 +148,18 @@ class TestAllowedSchemaList:
 class TestVolumeAllowlist:
     @pytest.fixture
     def vol_writes_on(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setenv("HERMES_DATABRICKS_WRITES_ENABLED", "true")
-        monkeypatch.setenv("HERMES_DATABRICKS_YOLO", "false")
+        monkeypatch.setenv("TREVOR_DATABRICKS_WRITES_ENABLED", "true")
+        monkeypatch.setenv("TREVOR_DATABRICKS_YOLO", "false")
         monkeypatch.setenv(
-            "HERMES_DATABRICKS_WRITE_ALLOWED_VOLUMES",
-            "/Volumes/workspace/hermes_agent/hermes_home",
+            "TREVOR_DATABRICKS_WRITE_ALLOWED_VOLUMES",
+            "/Volumes/workspace/trevor_agent/trevor_home",
         )
 
     def test_outside_allowlist_rejected(
         self, vol_writes_on: None, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         result = json.loads(
-            ts._h_volume_write(
-                {"path": "/Volumes/other/cat/vol/x.txt", "content": "x"}
-            )
+            ts._h_volume_write({"path": "/Volumes/other/cat/vol/x.txt", "content": "x"})
         )
         assert "error" in result
         assert "WRITE_ALLOWED_VOLUMES" in result["error"]
@@ -200,7 +186,7 @@ class TestVolumeAllowlist:
         result = json.loads(
             ts._h_volume_write(
                 {
-                    "path": "/Volumes/workspace/hermes_agent/hermes_home/note.txt",
+                    "path": "/Volumes/workspace/trevor_agent/trevor_home/note.txt",
                     "content": "hi",
                 }
             )
@@ -227,7 +213,7 @@ class TestVolumeAllowlist:
         result = json.loads(
             ts._h_volume_write(
                 {
-                    "path": "/Volumes/workspace/hermes_agent/hermes_home/exists.txt",
+                    "path": "/Volumes/workspace/trevor_agent/trevor_home/exists.txt",
                     "content": "hi",
                     "overwrite": True,
                 }
@@ -240,9 +226,7 @@ class TestVolumeAllowlist:
         self, vol_writes_on: None, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         result = json.loads(
-            ts._h_volume_delete(
-                {"path": "/Volumes/workspace/hermes_agent/hermes_home/x.txt"}
-            )
+            ts._h_volume_delete({"path": "/Volumes/workspace/trevor_agent/trevor_home/x.txt"})
         )
         assert "error" in result
         assert "yolo" in result["error"].lower()
@@ -255,8 +239,10 @@ class TestSchemaMatching:
         assert not ts._schema_match("main.s.t", ["other.*"])
 
     def test_exact_match(self) -> None:
-        assert ts._schema_match("workspace.hermes_agent.notes", ["workspace.hermes_agent.notes"])
-        assert not ts._schema_match("workspace.hermes_agent.other", ["workspace.hermes_agent.notes"])
+        assert ts._schema_match("workspace.trevor_agent.notes", ["workspace.trevor_agent.notes"])
+        assert not ts._schema_match(
+            "workspace.trevor_agent.other", ["workspace.trevor_agent.notes"]
+        )
 
     def test_catalog_wildcard(self) -> None:
         assert ts._schema_match("workspace.any.thing", ["workspace.*"])

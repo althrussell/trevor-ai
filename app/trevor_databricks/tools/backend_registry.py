@@ -14,7 +14,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
-from hermes_databricks.config import Config
+from trevor_databricks.config import Config
 
 # Toolsets we enable by default for the App. Pure-Python + Databricks-
 # friendly. (Heavy host-dependent toolsets stay disabled and emit
@@ -24,7 +24,7 @@ from hermes_databricks.config import Config
 # replies are one-shot and the qwen-35-122b endpoint over-reaches for
 # ``delegate_task`` even for trivial UC queries, which then spawns
 # subagents that don't inherit the Databricks-authed OpenAI client
-# (see app/hermes_databricks/databricks_provider.py:install_subagent_hook
+# (see app/trevor_databricks/databricks_provider.py:install_subagent_hook
 # for the runtime fix that makes them safe when re-enabled).
 DEFAULT_ENABLED_TOOLSETS: list[str] = [
     "core",
@@ -86,7 +86,7 @@ class BackendStatus:
 
 def describe_backends(cfg: Config) -> dict[str, Any]:
     """Summarise the configured backends — drives ``/debug/tools``."""
-    from hermes_databricks.tools import browser_backend, mcp_backend
+    from trevor_databricks.tools import browser_backend, mcp_backend
 
     terminal = BackendStatus(
         backend="terminal",

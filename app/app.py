@@ -1,4 +1,4 @@
-"""Hermes-on-Databricks FastAPI entrypoint.
+"""Trevor-on-Databricks FastAPI entrypoint.
 
 This module is the entrypoint declared in ``app.yaml`` (``uvicorn
 app:app``). The lifespan manager constructs the runtime supervisor,
@@ -11,7 +11,7 @@ which is responsible for:
   * Starting the Telegram poller (Phase 6)
   * Scheduling cron + heartbeat tasks (Phases 8/9)
 
-Each phase plugs into the same ``HermesSupervisor`` so we always boot
+Each phase plugs into the same ``TrevorSupervisor`` so we always boot
 to the most-complete state available — even if Hermes itself is not
 installed yet, the app still serves /health and /debug/runtime.
 """
@@ -29,15 +29,15 @@ from typing import Any
 from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.responses import JSONResponse
 
-from hermes_databricks import config as cfg_mod
-from hermes_databricks.health import HealthRegistry
-from hermes_databricks.observability.logging import configure_logging
+from trevor_databricks import config as cfg_mod
+from trevor_databricks.health import HealthRegistry
+from trevor_databricks.observability.logging import configure_logging
 
 # Supervisor is lazy-imported in lifespan so the module imports cleanly
 # even when some optional deps (Hermes itself, databricks-sdk) are
 # missing in the local-dev environment.
 
-log = logging.getLogger("hermes_databricks.app")
+log = logging.getLogger("trevor_databricks.app")
 
 
 @asynccontextmanager
@@ -54,7 +54,7 @@ async def lifespan(app: FastAPI):
     app.state.errors: dict[str, str] = {}
 
     try:
-        from hermes_databricks.supervisor import HermesSupervisor
+        from trevor_databricks.supervisor import TrevorSupervisor
     except Exception as exc:
         log.error("Supervisor import failed; serving in degraded mode", exc_info=True)
         app.state.errors["supervisor_import"] = f"{type(exc).__name__}: {exc}"
@@ -64,7 +64,7 @@ async def lifespan(app: FastAPI):
             pass
         return
 
-    supervisor = HermesSupervisor(cfg=cfg, health=health)
+    supervisor = TrevorSupervisor(cfg=cfg, health=health)
     app.state.supervisor = supervisor
 
     try:
@@ -85,7 +85,7 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(
-    title="hermes-on-databricks",
+    title="trevor-on-databricks",
     version="0.1.0",
     lifespan=lifespan,
 )
@@ -100,13 +100,13 @@ app = FastAPI(
 async def root(request: Request) -> dict[str, Any]:
     cfg = request.app.state.config
     return {
-        "app": "hermes-on-databricks",
+        "app": "trevor-on-databricks",
         "agent_name": cfg.agent_name,
         "model_endpoint": cfg.llm_endpoint,
         "lakebase_instance": cfg.lakebase_instance,
         "lakebase_schema": cfg.lakebase_schema,
-        "hermes_home_path": str(cfg.hermes_home),
-        "hermes_home_volume_path": cfg.hermes_home_volume_path,
+        "trevor_home_path": str(cfg.trevor_home),
+        "trevor_home_volume_path": cfg.trevor_home_volume_path,
         "artifacts_volume_path": cfg.artifacts_volume_path,
         "version": "0.1.0",
     }
@@ -131,7 +131,7 @@ async def config_endpoint(request: Request) -> dict[str, Any]:
         "agent_name": cfg.agent_name,
         "catalog": cfg.catalog,
         "schema": cfg.schema,
-        "hermes_home_volume": cfg.hermes_home_volume,
+        "trevor_home_volume": cfg.trevor_home_volume,
         "artifacts_volume": cfg.artifacts_volume,
         "secrets_scope": cfg.secrets_scope,
         "lakebase_instance": cfg.lakebase_instance,
@@ -144,7 +144,7 @@ async def config_endpoint(request: Request) -> dict[str, Any]:
         "terminal_backend": cfg.terminal_backend,
         "browser_backend": cfg.browser_backend,
         "mcp_enabled": cfg.mcp_enabled,
-        "hermes_home": str(cfg.hermes_home),
+        "trevor_home": str(cfg.trevor_home),
     }
 
 

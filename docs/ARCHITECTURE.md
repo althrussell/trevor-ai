@@ -1,4 +1,4 @@
-# Hermes on Databricks — Architecture
+# Trevor on Databricks — Architecture
 
 This document describes the runtime architecture that lets the full
 [Nous Research Hermes Agent](https://github.com/nousresearch/hermes-agent)
@@ -32,7 +32,7 @@ secrets, and inference.
                     │ getUpdates / sendMessage
                     ▼
    ┌────────────────────────────────────────┐
-   │ Databricks App: hermes-agent           │
+   │ Databricks App: trevor-agent           │
    │ ┌──────────────────────────────────┐   │
    │ │ FastAPI lifespan supervisor      │   │
    │ │ (app/app.py)                     │   │
@@ -72,15 +72,15 @@ secrets, and inference.
 
 ### 1. Databricks Asset Bundle (`databricks.yml`, `resources/`)
 
-A single bundle (`hermes-on-databricks`) provisions everything:
+A single bundle (`trevor-on-databricks`) provisions everything:
 
 | Resource | Purpose |
 |----------|---------|
-| `schemas.hermes_schema` | UC schema for all owned objects |
-| `volumes.hermes_home_volume` | Durable Hermes `HERMES_HOME` files |
-| `volumes.hermes_artifacts_volume` | Tool/agent artifacts |
-| `database_instances.hermes_db` | Lakebase (Postgres) for session state |
-| `apps.hermes_app` | The FastAPI app that loads Hermes |
+| `schemas.trevor_schema` | UC schema for all owned objects |
+| `volumes.trevor_home_volume` | Durable Hermes `HERMES_HOME` files |
+| `volumes.trevor_artifacts_volume` | Tool/agent artifacts |
+| `database_instances.trevor_db` | Lakebase (Postgres) for session state |
+| `apps.trevor_app` | The FastAPI app that loads Hermes |
 | `jobs.setup_lakebase` | One-shot DDL + SP grants notebook |
 
 App resource bindings (in `resources/app.yml`) grant the app's
@@ -92,11 +92,11 @@ broader workspace permissions are granted.
 
 A FastAPI application launched by `uvicorn`. Its lifespan handler:
 
-1. Resolves config from env (`hermes_databricks.config`).
+1. Resolves config from env (`trevor_databricks.config`).
 2. Initialises a `UCVolumeHome` and downloads any existing
-   `HERMES_HOME` contents from UC Volume into `/tmp/hermes_cache`.
+   `HERMES_HOME` contents from UC Volume into `/tmp/trevor_cache`.
 3. Sets `HERMES_HOME` to the cache directory and bootstraps Hermes
-   (`hermes_cli.config.ensure_hermes_home`).
+   (`hermes_cli.config.ensure_trevor_home`).
 4. Constructs a `LakebaseSessionDB` (duck-typed `SessionDB` replacement).
 5. Builds an `AIAgent` with `session_db=…`, then swaps its OpenAI
    `client` for the WorkspaceClient OpenAI-compatible client.
@@ -106,7 +106,7 @@ A FastAPI application launched by `uvicorn`. Its lifespan handler:
 8. On shutdown, cancels tasks and best-effort syncs cached state back
    to UC Volume.
 
-### 3. Databricks model provider (`hermes_databricks/databricks_provider.py`)
+### 3. Databricks model provider (`trevor_databricks/databricks_provider.py`)
 
 Returns a refresh-aware OpenAI-compatible client built from
 `WorkspaceClient().serving_endpoints.get_open_ai_client()`. Auth headers
@@ -117,7 +117,7 @@ A `ProviderProfile` is also registered with Hermes' provider registry
 so `hermes model` and CLI introspection report `databricks` as a first-
 class provider.
 
-### 4. Lakebase-backed `SessionDB` (`hermes_databricks/state/*`)
+### 4. Lakebase-backed `SessionDB` (`trevor_databricks/state/*`)
 
 `LakebaseSessionDB` implements the subset of methods Hermes' core
 loop calls against `SessionDB`:
@@ -130,20 +130,20 @@ loop calls against `SessionDB`:
 * `search_messages` (ILIKE-based fallback; FTS5 is SQLite-only)
 * meta helpers (`get_meta`, `set_meta`, `vacuum` no-op)
 
-Schema lives in `hermes_databricks/state/schema.sql` and matches the
+Schema lives in `trevor_databricks/state/schema.sql` and matches the
 columns Hermes actually writes (input/output tokens, cache tokens,
 reasoning tokens, cost fields, handoff fields, etc.). FTS5 specifics
 are replaced by Postgres GIN indexes plus `to_tsvector` / `pg_trgm`
 where appropriate, with `search_messages` documented as having
 limitations vs. SQLite FTS5.
 
-### 5. UC Volume home (`hermes_databricks/fs/*`)
+### 5. UC Volume home (`trevor_databricks/fs/*`)
 
 `UCVolumeHome` wraps the Databricks SDK Files API and gives Hermes a
 durable home directory:
 
 * On boot: pull all files under the configured volume prefix into
-  `/tmp/hermes_cache/hermes_home/`.
+  `/tmp/trevor_cache/trevor_home/`.
 * During run: writes are made to the local cache; "durable" subtrees
   (`skills/`, `cron/`, `memories/`, `logs/curator/`, `sessions/`,
   `image_cache/`, `audio_cache/`) are scheduled for upload via the
@@ -158,7 +158,7 @@ operates against is the Lakebase one, so SQLite is only ever touched
 by code paths that bypass `_session_db` (e.g. `kanban.db`, which lives
 in-cache only).
 
-### 6. Telegram long polling (`hermes_databricks/telegram_polling.py`)
+### 6. Telegram long polling (`trevor_databricks/telegram_polling.py`)
 
 Direct port of the Living-AI pattern:
 
@@ -172,7 +172,7 @@ Direct port of the Living-AI pattern:
 6. Responses are sent via `sendMessage`; Markdown failures fall back
    to plain text.
 
-### 7. Tool backends (`hermes_databricks/tools/*`)
+### 7. Tool backends (`trevor_databricks/tools/*`)
 
 Hermes' tool registry is preserved unchanged. We provide:
 
@@ -199,7 +199,7 @@ the jobs file is durable. The supervisor schedules `cron.scheduler.tick`
 every 60s. Heavyweight scheduled jobs can be delegated to Databricks
 Jobs via a future `databricks_job` cron backend.
 
-### 9. Observability (`hermes_databricks/observability/*`)
+### 9. Observability (`trevor_databricks/observability/*`)
 
 * Structured JSON logging with a `RedactingFormatter` that strips
   bearer tokens, Postgres URIs with credentials, and Telegram tokens.
@@ -246,16 +246,16 @@ Telegram user → getUpdates loop receives a Message
 |---------|------|
 | Bundle | `databricks.yml`, `resources/*.yml` |
 | App entrypoint | `app/app.py`, `app/app.yaml` |
-| Config | `app/hermes_databricks/config.py` |
-| Hermes wiring | `app/hermes_databricks/runtime.py` |
-| Model provider | `app/hermes_databricks/databricks_provider.py` |
-| Lakebase pool | `app/hermes_databricks/lakebase.py` |
-| Session adapter | `app/hermes_databricks/state/lakebase_session_db.py` |
-| Volume FS | `app/hermes_databricks/fs/volume_fs.py`, `cache_sync.py` |
-| Telegram | `app/hermes_databricks/telegram_polling.py` |
-| Supervisor | `app/hermes_databricks/supervisor.py` |
-| Tools | `app/hermes_databricks/tools/*` |
-| Observability | `app/hermes_databricks/observability/*` |
-| Lakebase DDL | `sql/setup_lakebase.py`, `app/hermes_databricks/state/schema.sql` |
+| Config | `app/trevor_databricks/config.py` |
+| Hermes wiring | `app/trevor_databricks/runtime.py` |
+| Model provider | `app/trevor_databricks/databricks_provider.py` |
+| Lakebase pool | `app/trevor_databricks/lakebase.py` |
+| Session adapter | `app/trevor_databricks/state/lakebase_session_db.py` |
+| Volume FS | `app/trevor_databricks/fs/volume_fs.py`, `cache_sync.py` |
+| Telegram | `app/trevor_databricks/telegram_polling.py` |
+| Supervisor | `app/trevor_databricks/supervisor.py` |
+| Tools | `app/trevor_databricks/tools/*` |
+| Observability | `app/trevor_databricks/observability/*` |
+| Lakebase DDL | `sql/setup_lakebase.py`, `app/trevor_databricks/state/schema.sql` |
 | Scripts | `scripts/{deploy,destroy,smoke_test,local_dev}.sh` |
 | Tests | `tests/{unit,integration,smoke}/` |
