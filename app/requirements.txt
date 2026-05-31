@@ -24,7 +24,7 @@ psycopg[binary]==3.2.3
 
 # Hermes itself. Pins its own openai, pydantic, httpx, pyyaml,
 # requests, jinja2, croniter, etc. — don't override them here.
-hermes-agent==0.14.0
+hermes-agent==0.15.2
 
 # NOTE: databricks-connect is NOT pinned here — it ships ~400MB of
 # Spark client jars and is only needed by the
